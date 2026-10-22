@@ -115,6 +115,20 @@ input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--line); 
 .note.bad { background: var(--bad-soft); }
 .note a { color: var(--accent); }
 
+.menu-backdrop { position: fixed; inset: 0; z-index: 19; }
+.menu {
+  position: fixed; z-index: 20; width: 220px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+}
+.menu button {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  padding: 6px 10px; border: 0; border-radius: 5px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.menu button:hover:not(:disabled), .menu button:focus-visible { background: var(--accent-soft); outline: none; }
+.menu button:disabled { opacity: 0.4; cursor: default; }
+.menu kbd { font: 12px system-ui, sans-serif; color: var(--muted); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+
 .toast {
   position: fixed; z-index: 10; right: 20px;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
   STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
   isItalicName, LINE_HEIGHT, pickFace, renderPage, type HeaderFooter,
@@ -95,6 +95,9 @@ export default function App() {
   } | null>(null);
   const [guides, setGuides] = useState<(Guides & { page: number }) | null>(null);
   const marquee = useRef<{ page: number; x: number; y: number; base: string[]; boxes: (readonly [string, Box])[] } | null>(null);
+  const [menu, setMenu] = useState<(At & { left: number; top: number }) | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => void (menu && menuRef.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus()), [menu]);
   const [band, setBand] = useState<{ page: number; l: number; r: number; t: number; b: number } | null>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
 
@@ -125,7 +128,9 @@ export default function App() {
     commit([...elsRef.current, ...copies]);
     setSel(copies.map((c) => c.id));
   };
-  const clip = useRef<{ els: El[]; text: string; pastes: number } | null>(null);
+  // `synced`: the text also made it onto the system clipboard, so a different clipboard text means a newer copy.
+  const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
+  const pasteTimer = useRef(0);
 
   const remove = (ids: string[]) => {
     commit(elsRef.current.filter((e) => !(ids.includes(e.id) && !e.orig)).map((e) => (ids.includes(e.id) ? { ...e, deleted: true } : e)));
@@ -326,6 +331,38 @@ export default function App() {
     return () => clearTimeout(t);
   }, [file, pages, els, scale]);
 
+  // Shared by the keyboard shortcuts and the context menu.
+  type At = { page: number; x: number; y: number };
+  const copySel = (cut = false) => {
+    if (!selected.length) return;
+    const text = selected.filter((x) => !x.image).map((x) => x.text).join("\n");
+    const c = (clip.current = { els: selected, text, pastes: 0, synced: false as boolean });
+    navigator.clipboard?.writeText(text).then(() => (c.synced = true), () => {});
+    if (cut) remove(sel);
+  };
+  /** At a point, the group's top-left lands there; otherwise each paste steps 10pt further. */
+  const pasteCopied = (at?: At) => {
+    const c = clip.current;
+    if (!c) return;
+    if (at) return addCopies(c.els, at.x - Math.min(...c.els.map((e) => e.x)), at.y - Math.min(...c.els.map((e) => e.y)), at.page);
+    c.pastes++;
+    addCopies(c.els, 10 * c.pastes, 10 * c.pastes, selected[0]?.page);
+  };
+  /** Text from another app becomes new text: at a point, under the selected text, or at the top of page 1. */
+  const pasteText = (text: string, at?: At) => {
+    const like = selected.find((x) => !x.image);
+    const top = margin ?? 36;
+    addCopies([{
+      id: "", page: at?.page ?? like?.page ?? 0, text: text.replace(/\r\n?/g, "\n").trim(),
+      x: at?.x ?? like?.x ?? top, y: at?.y ?? (like ? like.y + like.size * LINE_HEIGHT : top), ascent: 0.8,
+      size: like?.size ?? 11, color: like?.color ?? "#000000", font: like?.font ?? "Helvetica",
+      srcFont: "", bold: false, italic: false,
+    }], 0, 0);
+  };
+  const duplicate = () => addCopies(selected, 10, 10);
+  const selectAll = () => setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
+  const resetSel = () => patch(sel, (e) => (e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false } : {}));
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -334,13 +371,13 @@ export default function App() {
       }
       if (isTyping(e.target)) return;
       if (e.key === "Escape") (setSel([]), setAdding(false));
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
-        return;
-      }
+      const mod = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+      if (mod && key === "a") return e.preventDefault(), selectAll();
+      // Not every browser sends a paste event outside text boxes; if none arrives, paste our own copies.
+      if (mod && key === "v") return void (pasteTimer.current = window.setTimeout(() => pasteCopied(), 0));
       if (!sel.length) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") return e.preventDefault(), addCopies(selected, 10, 10);
+      if (mod && (key === "c" || key === "x")) return copySel(key === "x");
+      if (mod && key === "d") return e.preventDefault(), duplicate();
       if (e.key === "Delete" || e.key === "Backspace") (e.preventDefault(), remove(sel));
       const step = e.shiftKey ? 10 : 1;
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
@@ -359,41 +396,24 @@ export default function App() {
       }
     };
     const onLeave = (e: BeforeUnloadEvent) => past.current.length && e.preventDefault();
-    // Clipboard events rather than keys: no permission prompt, and text reaches other apps too.
-    const onCopy = (e: ClipboardEvent) => {
-      if (isTyping(e.target) || !selected.length) return;
-      const text = selected.filter((x) => !x.image).map((x) => x.text).join("\n");
-      clip.current = { els: selected, text, pastes: 0 };
-      e.clipboardData?.setData("text/plain", text);
-      e.preventDefault();
-      if (e.type === "cut") remove(sel);
-    };
+    // Only needed for text copied in another app; our own copies paste from `clip`.
     const onPaste = (e: ClipboardEvent) => {
       if (isTyping(e.target) || !file) return;
+      clearTimeout(pasteTimer.current);
       e.preventDefault();
       const text = e.clipboardData?.getData("text/plain") ?? "";
-      const c = clip.current, page = selected[0]?.page;
-      if (c && text === c.text) return c.pastes++, addCopies(c.els, 10 * c.pastes, 10 * c.pastes, page);
-      if (!text.trim()) return;
-      // Text from another app: new text under the selected text, or at the top of the first page.
-      const like = selected.find((x) => !x.image);
-      addCopies([{
-        id: "", page: like?.page ?? 0, text: text.replace(/\r\n?/g, "\n").trim(),
-        x: like?.x ?? margin ?? 36, y: like ? like.y - 10 : (margin ?? 36) - 10, ascent: 0.8,
-        size: like?.size ?? 11, color: like?.color ?? "#000000", font: like?.font ?? "Helvetica",
-        srcFont: "", bold: false, italic: false,
-      }], 0, like ? like.size * LINE_HEIGHT + 10 : 10);
+      const c = clip.current;
+      // Windows turns line breaks into CRLF on the clipboard, so compare ignoring line endings.
+      const same = (t: string) => t.replace(/\r\n?/g, "\n").trim() === c?.text.trim();
+      if (text.trim() && (!c || (c.synced && !same(text)))) pasteText(text);
+      else pasteCopied();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("beforeunload", onLeave);
-    window.addEventListener("copy", onCopy);
-    window.addEventListener("cut", onCopy);
     window.addEventListener("paste", onPaste);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("beforeunload", onLeave);
-      window.removeEventListener("copy", onCopy);
-      window.removeEventListener("cut", onCopy);
       window.removeEventListener("paste", onPaste);
     };
   });
@@ -408,7 +428,7 @@ export default function App() {
   };
 
   const onElDown = (e: RPointerEvent, el: El) => {
-    if (adding) return;
+    if (adding || e.button !== 0) return e.button === 2 && e.stopPropagation();
     e.stopPropagation();
     // Shift/Ctrl+click adds at once (so the group can be dragged); removing waits for a click without a drag.
     const mod = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -466,6 +486,7 @@ export default function App() {
 
   // Box selection: drag across empty page space. Shift/Ctrl adds to the current selection.
   const onPageDown = (e: RPointerEvent, page: number) => {
+    if (e.button !== 0) return;
     if (!adding) {
       const r = e.currentTarget.getBoundingClientRect();
       const additive = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -477,19 +498,23 @@ export default function App() {
     }
     e.preventDefault(); // otherwise the click's mousedown steals focus from the new text box
     const box = e.currentTarget.getBoundingClientRect();
-    const last = elsRef.current.find((x) => x.id === sel[0]);
+    addTextAt({ page, x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale });
+  };
+  const addTextAt = ({ page, x, y }: At) => {
+    const last = elsRef.current.find((e) => e.id === sel[0] && !e.image);
     const size = last?.size ?? 11, area = inside(page);
     const fit = (v: number, lo: number, hi: number) => (area ? Math.max(lo, Math.min(v, hi)) : v);
     const el: El = {
       id: "new-" + performance.now(), page, text: "",
-      x: fit(Math.round((e.clientX - box.left) / scale), area?.l ?? 0, area?.r ?? 0),
-      y: fit(Math.round((e.clientY - box.top) / scale), area?.t ?? 0, (area?.b ?? 0) - size * LINE_HEIGHT),
+      x: fit(Math.round(x), area?.l ?? 0, area?.r ?? 0),
+      y: fit(Math.round(y), area?.t ?? 0, (area?.b ?? 0) - size * LINE_HEIGHT),
       ascent: 0.8, size, color: last?.color ?? "#000000", font: last?.font ?? "Helvetica",
       srcFont: "", bold: false, italic: false,
     };
     commit([...elsRef.current, el]);
     setSel([el.id]);
     setAdding(false);
+    setTab("edit");
   };
 
   const onPageMove = (e: RPointerEvent) => {
@@ -589,6 +614,13 @@ export default function App() {
             onPointerDown={(e) => (e.stopPropagation(), onPageDown(e, p))}
             onPointerMove={onPageMove}
             onPointerUp={onPageUp}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const id = (e.target as HTMLElement).closest<HTMLElement>("[data-id]")?.dataset.id;
+              setSel(id ? (sel.includes(id) ? sel : [id]) : []);
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({ page: p, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, left: e.clientX, top: e.clientY });
+            }}
           >
             {images.current.get(p) && <img src={images.current.get(p)!.url} alt="" draggable={false} />}
             {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
@@ -635,6 +667,60 @@ export default function App() {
         ))}
       </main>
 
+      {menu && (() => {
+        const has = selected.length > 0;
+        const at = { page: menu.page, x: menu.x, y: menu.y };
+        const pasteHere = () =>
+          clip.current
+            ? pasteCopied(at)
+            : navigator.clipboard?.readText().then((t) => (t.trim() ? pasteText(t, at) : Promise.reject()))
+                .catch(() => setReport({ ok: false, lines: ["Nothing to paste yet. Copy something first."] }));
+        const items: ([string, string, () => unknown, boolean] | null)[] = [
+          ["Cut", "Ctrl+X", () => copySel(true), has],
+          ["Copy", "Ctrl+C", () => copySel(), has],
+          ["Paste here", "Ctrl+V", pasteHere, true],
+          ["Duplicate", "Ctrl+D", duplicate, has],
+          ["Delete", "Del", () => remove(sel), has],
+          null,
+          ["Reset to original", "", resetSel, selected.some((e) => e.orig && isDirty(e))],
+          ["Select all", "Ctrl+A", selectAll, true],
+          ["Add text here", "", () => addTextAt(at), true],
+        ];
+        const close = () => setMenu(null);
+        const onKeys = (e: RKeyboardEvent) => {
+          e.stopPropagation();
+          const btns = [...menuRef.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+          const i = btns.indexOf(document.activeElement as HTMLElement);
+          if (e.key === "Escape" || e.key === "Tab") (e.preventDefault(), close());
+          if (e.key === "ArrowDown") (e.preventDefault(), btns[(i + 1) % btns.length]?.focus());
+          if (e.key === "ArrowUp") (e.preventDefault(), btns[(i - 1 + btns.length) % btns.length]?.focus());
+        };
+        return (
+          <div className="menu-backdrop" onPointerDown={close} onWheel={close} onContextMenu={(e) => (e.preventDefault(), close())}>
+            <div
+              ref={menuRef}
+              role="menu"
+              className="menu"
+              // keep it on screen: ~31px per item
+              style={{ left: Math.min(menu.left, innerWidth - 232), top: Math.min(menu.top, innerHeight - items.length * 31 - 12) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={onKeys}
+            >
+              {items.map((it, i) =>
+                it ? (
+                  <button key={it[0]} role="menuitem" disabled={!it[3]} onClick={() => (close(), it[2]())}>
+                    <span>{it[0]}</span>
+                    {it[1] && <kbd>{it[1]}</kbd>}
+                  </button>
+                ) : (
+                  <hr key={i} />
+                ),
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {report && (
         <div className={`toast ${report.busy ? "" : report.ok ? "ok" : "bad"}`} role={report.ok ? "status" : "alert"}>
           {report.busy && <span className="spinner" aria-hidden="true" />}
@@ -662,7 +748,7 @@ export default function App() {
               Shift or Ctrl+click to add or remove, Ctrl+A to select everything; the selection moves together.
               While dragging, things snap into line; hold Shift to move freely or Ctrl to move in whole points.
               Double-click text to reword. Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
-              Ctrl+C, X and V copy, cut and paste; Ctrl+D duplicates.
+              Ctrl+C, X and V copy, cut and paste; Ctrl+D duplicates. Right-click for all of these.
             </p>
           )}
 
@@ -705,7 +791,7 @@ export default function App() {
                 {one && (["x", "y"] as const).map((k) => (
                   <label key={k}>
                     {k.toUpperCase()} (pt)
-                    <input type="number" step="1" value={one[k]}
+                    <input type="number" step="1" value={Math.round(one[k] * 10) / 10}
                       onChange={(e) => e.target.value !== "" && patch([one.id], { [k]: +e.target.value }, k + one.id)} />
                   </label>
                 ))}
