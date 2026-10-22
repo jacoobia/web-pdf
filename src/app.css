@@ -80,10 +80,15 @@ body { margin: 0; background: var(--bg); }
 
 .side { grid-area: side; background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .side-left .side { border-left: 0; border-right: 1px solid var(--line); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 0; }
+.tab {
+  flex: 1; padding: 8px 6px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .side section { display: flex; flex-direction: column; gap: 10px; }
-.side summary { cursor: pointer; color: var(--muted); }
-.side summary h2 { display: inline; }
-.side details > :not(summary) { margin-top: 10px; }
 .side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0; }
 .side p { margin: 0; }
 .muted { color: var(--muted); font-size: 13px; }

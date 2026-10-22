@@ -44,6 +44,8 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
+const TABS = [["edit", "Edit"], ["fonts", "Fonts"], ["page", "Page"]] as const;
+
 const PDF_TYPE = { description: "PDF", accept: { "application/pdf": [".pdf"] } };
 
 type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
@@ -65,6 +67,7 @@ export default function App() {
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
   const [side, setSide] = usePref("side", "right");
+  const [tab, setTab] = usePref("tab", "edit");
   const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
   const [installed, setInstalled] = useState<LocalFont[]>([]);
   const [hf, setHf] = useState<HeaderFooter>({
@@ -427,6 +430,8 @@ export default function App() {
   });
 
   const selected = els.filter((e) => sel.includes(e.id));
+  // Selecting text brings its settings into view.
+  useEffect(() => void (sel.length && setTab("edit")), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
   const shared = <K extends keyof El>(k: K) => (selected.every((e) => e[k] === selected[0][k]) ? selected[0]?.[k] : undefined);
   const [font, size, color] = [shared("font"), shared("size"), shared("color")];
@@ -543,201 +548,223 @@ export default function App() {
       )}
 
       <aside className="side">
-        {!selected.length && file && (
-          <p className="muted">
-            Click text to select it, then drag to move. Drag across empty space to select a group, Shift or Ctrl+click
-            to add or remove, Ctrl+A to select everything; selected text moves together. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
-            Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
-          </p>
-        )}
-
-        {selected.length > 0 && (
-          <section>
-            <h2>{one ? (one.orig ? "Text" : "New text") : `${selected.length} selected`}</h2>
-            {one && (
-              <textarea
-                ref={textBox}
-                key={one.id}
-                autoFocus={!one.orig && !one.text}
-                value={one.text}
-                rows={Math.max(2, one.text.split("\n").length)}
-                placeholder="Type your text"
-                onChange={(e) => patch([one.id], { text: e.target.value }, "text:" + one.id)}
-              />
-            )}
-            <div className="grid">
-              <label className="wide">
-                Font
-                <select value={font ?? ""} onChange={(e) => patch(sel, { font: e.target.value })}>
-                  {font === undefined && <option value="">(mixed)</option>}
-                  {available.map((f) => <option key={f}>{f}</option>)}
-                </select>
-              </label>
-              <label>
-                Size
-                <input type="number" step="0.5" min="1" value={size ?? ""} placeholder="mixed"
-                  onChange={(e) => +e.target.value > 0 && patch(sel, { size: +e.target.value }, "size:" + sel)} />
-              </label>
-              <label>
-                Colour
-                <input type="color" value={color ?? "#000000"} onChange={(e) => patch(sel, { color: e.target.value }, "color:" + sel)} />
-              </label>
-              {one && (["x", "y"] as const).map((k) => (
-                <label key={k}>
-                  {k.toUpperCase()} (pt)
-                  <input type="number" step="1" value={one[k]}
-                    onChange={(e) => e.target.value !== "" && patch([one.id], { [k]: +e.target.value }, k + one.id)} />
-                </label>
-              ))}
-            </div>
-            {one?.srcFont && <FontNote el={one} loaded={!missing.includes(one.srcFont)}
-              onUseForAll={() => commit(fontForSource(elsRef.current, one.srcFont, one.font))} />}
-            <div className="row">
-              {selected.some((e) => e.orig && isDirty(e)) && (
-                <button className="btn" onClick={() => patch(sel, (e) => (e.orig ? { ...e.orig, deleted: false } : {}))}>
-                  Reset to original
-                </button>
-              )}
-              <button className="btn danger" onClick={() => remove(sel)}>Delete</button>
-            </div>
-          </section>
-        )}
-
         {file && (
-          <section>
-            <h2>Fonts in this PDF</h2>
-            {!sourceFonts.length && <p className="muted">No text found. This might be a scanned image.</p>}
-            <ul className="fonts">
-              {sourceFonts.map((s) => {
-                const ok = !missing.includes(s);
-                const used = els.find((e) => e.srcFont === s)!.font;
-                const help = fontHelp(s);
-                return (
-                  <li key={s}>
-                    <strong>{s}</strong>
-                    <span className={ok ? "tag ok" : "tag"}>{ok ? "loaded" : `edits use ${used}`}</span>
-                    {!ok && (
-                      <span className="muted">
-                        <a href={help.googleUrl} target="_blank" rel="noreferrer">Find “{help.family}” on Google Fonts</a>
-                        {help.alternative && (
-                          <> · or the free lookalike{" "}
-                            <a href={help.alternative.url} target="_blank" rel="noreferrer">{help.alternative.family}</a>
-                          </>
-                        )}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="row">
-              <label className="btn">
-                Load font file…
-                <input type="file" accept=".ttf,.otf" multiple hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
-              </label>
-              {"queryLocalFonts" in window && missing.length > 0 && (
-                <button className="btn" onClick={() => findInstalled(missing)}>Find on this PC</button>
-              )}
-            </div>
+          <div className="tabs" role="tablist">
+            {TABS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "tab on" : "tab"} onClick={() => setTab(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {tab === "edit" && (
+          <>
+          {!selected.length && file && (
             <p className="muted">
-              Only text you change is redrawn. Untouched text keeps its original font. On Windows, installed fonts are
-              in C:\Windows\Fonts.
+              Click text to select it, then drag to move. Drag across empty space to select a group, Shift or Ctrl+click
+              to add or remove, Ctrl+A to select everything; selected text moves together. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
+              Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
             </p>
-          </section>
-        )}
+          )}
 
-        {file && (
-          <details>
-            <summary><h2>Header &amp; footer</h2></summary>
-            {(["header", "footer"] as const).map((row) => (
-              <div key={row} className="grid three">
-                {["Left", "Centre", "Right"].map((label, i) => (
-                  <label key={label}>
-                    {row === "header" ? "Header" : "Footer"} {label.toLowerCase()}
-                    <input
-                      type="text"
-                      value={hf[row][i]}
-                      onChange={(e) => setHf({ ...hf, [row]: hf[row].map((t, j) => (j === i ? e.target.value : t)) })}
-                    />
+          {selected.length > 0 && (
+            <section>
+              <h2>{one ? (one.orig ? "Text" : "New text") : `${selected.length} selected`}</h2>
+              {one && (
+                <textarea
+                  ref={textBox}
+                  key={one.id}
+                  autoFocus={!one.orig && !one.text}
+                  value={one.text}
+                  rows={Math.max(2, one.text.split("\n").length)}
+                  placeholder="Type your text"
+                  onChange={(e) => patch([one.id], { text: e.target.value }, "text:" + one.id)}
+                />
+              )}
+              <div className="grid">
+                <label className="wide">
+                  Font
+                  <select value={font ?? ""} onChange={(e) => patch(sel, { font: e.target.value })}>
+                    {font === undefined && <option value="">(mixed)</option>}
+                    {available.map((f) => <option key={f}>{f}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Size
+                  <input type="number" step="0.5" min="1" value={size ?? ""} placeholder="mixed"
+                    onChange={(e) => +e.target.value > 0 && patch(sel, { size: +e.target.value }, "size:" + sel)} />
+                </label>
+                <label>
+                  Colour
+                  <input type="color" value={color ?? "#000000"} onChange={(e) => patch(sel, { color: e.target.value }, "color:" + sel)} />
+                </label>
+                {one && (["x", "y"] as const).map((k) => (
+                  <label key={k}>
+                    {k.toUpperCase()} (pt)
+                    <input type="number" step="1" value={one[k]}
+                      onChange={(e) => e.target.value !== "" && patch([one.id], { [k]: +e.target.value }, k + one.id)} />
                   </label>
                 ))}
               </div>
-            ))}
-            <div className="grid">
-              <label className="wide">
-                Font
-                <select value={hf.font} onChange={(e) => setHf({ ...hf, font: e.target.value })}>
-                  {available.map((f) => <option key={f}>{f}</option>)}
-                </select>
-              </label>
-              <label>
-                Size
-                <input type="number" step="0.5" min="1" value={hf.size}
-                  onChange={(e) => +e.target.value > 0 && setHf({ ...hf, size: +e.target.value })} />
-              </label>
-              <label>
-                Colour
-                <input type="color" value={hf.color} onChange={(e) => setHf({ ...hf, color: e.target.value })} />
-              </label>
-              <label>
-                From edge (pt)
-                <input type="number" step="1" min="0" value={hf.margin}
-                  onChange={(e) => e.target.value !== "" && setHf({ ...hf, margin: +e.target.value })} />
-              </label>
-              <label className="check">
-                <input type="checkbox" checked={hf.skipFirst} onChange={(e) => setHf({ ...hf, skipFirst: e.target.checked })} />
-                Skip first page
-              </label>
-            </div>
-            <p className="muted">Shown on every page. Use {"{page}"} and {"{pages}"} for page numbers, e.g. Page {"{page}"} of {"{pages}"}.</p>
-          </details>
+              {one?.srcFont && <FontNote el={one} loaded={!missing.includes(one.srcFont)}
+                onUseForAll={() => commit(fontForSource(elsRef.current, one.srcFont, one.font))} />}
+              <div className="row">
+                {selected.some((e) => e.orig && isDirty(e)) && (
+                  <button className="btn" onClick={() => patch(sel, (e) => (e.orig ? { ...e.orig, deleted: false } : {}))}>
+                    Reset to original
+                  </button>
+                )}
+                <button className="btn danger" onClick={() => remove(sel)}>Delete</button>
+              </div>
+            </section>
+          )}
+          </>
         )}
 
-        {file && (
-          <section>
-            <h2>Change font</h2>
-            <div className="grid">
-              <label>
-                Font
-                <select value={swap.family} onChange={(e) => setSwap({ ...swap, family: e.target.value })}>
-                  <optgroup label="Loaded and built-in">
-                    {families.map((f) => <option key={f}>{f}</option>)}
-                  </optgroup>
-                  {installedFamilies.length > 0 && (
-                    <optgroup label="Installed on this PC">
-                      {installedFamilies.map((f) => <option key={f}>{f}</option>)}
+        {tab === "fonts" && (
+          <>
+          {file && (
+            <section>
+              <h2>Fonts in this PDF</h2>
+              {!sourceFonts.length && <p className="muted">No text found. This might be a scanned image.</p>}
+              <ul className="fonts">
+                {sourceFonts.map((s) => {
+                  const ok = !missing.includes(s);
+                  const used = els.find((e) => e.srcFont === s)!.font;
+                  const help = fontHelp(s);
+                  return (
+                    <li key={s}>
+                      <strong>{s}</strong>
+                      <span className={ok ? "tag ok" : "tag"}>{ok ? "loaded" : `edits use ${used}`}</span>
+                      {!ok && (
+                        <span className="muted">
+                          <a href={help.googleUrl} target="_blank" rel="noreferrer">Find “{help.family}” on Google Fonts</a>
+                          {help.alternative && (
+                            <> · or the free lookalike{" "}
+                              <a href={help.alternative.url} target="_blank" rel="noreferrer">{help.alternative.family}</a>
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="row">
+                <label className="btn">
+                  Load font file…
+                  <input type="file" accept=".ttf,.otf" multiple hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
+                </label>
+                {"queryLocalFonts" in window && missing.length > 0 && (
+                  <button className="btn" onClick={() => findInstalled(missing)}>Find on this PC</button>
+                )}
+              </div>
+              <p className="muted">
+                Only text you change is redrawn. Untouched text keeps its original font. On Windows, installed fonts are
+                in C:\Windows\Fonts.
+              </p>
+            </section>
+          )}
+
+          {file && (
+            <section>
+              <h2>Change font</h2>
+              <div className="grid">
+                <label>
+                  Font
+                  <select value={swap.family} onChange={(e) => setSwap({ ...swap, family: e.target.value })}>
+                    <optgroup label="Loaded and built-in">
+                      {families.map((f) => <option key={f}>{f}</option>)}
                     </optgroup>
-                  )}
-                </select>
-              </label>
-              <label>
-                Apply to
-                <select value={swap.scope} onChange={(e) => setSwap({ ...swap, scope: e.target.value })}>
-                  <option value="all">All pages</option>
-                  {pages.map((_, i) => <option key={i} value={i}>Page {i + 1}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="row">
-              <button className="btn" onClick={swapFonts}>Change all text to {swap.family}</button>
-            </div>
-            {"queryLocalFonts" in window && !installed.length && (
-              <button
-                className="link"
-                onClick={() =>
-                  loadInstalledList().catch((err) =>
-                    setReport({ ok: false, lines: [`Couldn't read installed fonts: ${(err as Error).message}`] }),
-                  )
-                }
-              >
-                Show fonts installed on this PC
-              </button>
-            )}
-            <p className="muted">
-              Bold and italic are kept when the font has those styles. Load each style's file (e.g. Arial and Arial Bold)
-              for an exact match. All of that text gets redrawn; Ctrl+Z undoes it.
-            </p>
-          </section>
+                    {installedFamilies.length > 0 && (
+                      <optgroup label="Installed on this PC">
+                        {installedFamilies.map((f) => <option key={f}>{f}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Apply to
+                  <select value={swap.scope} onChange={(e) => setSwap({ ...swap, scope: e.target.value })}>
+                    <option value="all">All pages</option>
+                    {pages.map((_, i) => <option key={i} value={i}>Page {i + 1}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="row">
+                <button className="btn" onClick={swapFonts}>Change all text to {swap.family}</button>
+              </div>
+              {"queryLocalFonts" in window && !installed.length && (
+                <button
+                  className="link"
+                  onClick={() =>
+                    loadInstalledList().catch((err) =>
+                      setReport({ ok: false, lines: [`Couldn't read installed fonts: ${(err as Error).message}`] }),
+                    )
+                  }
+                >
+                  Show fonts installed on this PC
+                </button>
+              )}
+              <p className="muted">
+                Bold and italic are kept when the font has those styles. Load each style's file (e.g. Arial and Arial Bold)
+                for an exact match. All of that text gets redrawn; Ctrl+Z undoes it.
+              </p>
+            </section>
+          )}
+          </>
+        )}
+
+        {tab === "page" && (
+          <>
+          {file && (
+            <section>
+              <h2>Header &amp; footer</h2>
+              {(["header", "footer"] as const).map((row) => (
+                <div key={row} className="grid three">
+                  {["Left", "Centre", "Right"].map((label, i) => (
+                    <label key={label}>
+                      {row === "header" ? "Header" : "Footer"} {label.toLowerCase()}
+                      <input
+                        type="text"
+                        value={hf[row][i]}
+                        onChange={(e) => setHf({ ...hf, [row]: hf[row].map((t, j) => (j === i ? e.target.value : t)) })}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ))}
+              <div className="grid">
+                <label className="wide">
+                  Font
+                  <select value={hf.font} onChange={(e) => setHf({ ...hf, font: e.target.value })}>
+                    {available.map((f) => <option key={f}>{f}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Size
+                  <input type="number" step="0.5" min="1" value={hf.size}
+                    onChange={(e) => +e.target.value > 0 && setHf({ ...hf, size: +e.target.value })} />
+                </label>
+                <label>
+                  Colour
+                  <input type="color" value={hf.color} onChange={(e) => setHf({ ...hf, color: e.target.value })} />
+                </label>
+                <label>
+                  From edge (pt)
+                  <input type="number" step="1" min="0" value={hf.margin}
+                    onChange={(e) => e.target.value !== "" && setHf({ ...hf, margin: +e.target.value })} />
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={hf.skipFirst} onChange={(e) => setHf({ ...hf, skipFirst: e.target.checked })} />
+                  Skip first page
+                </label>
+              </div>
+              <p className="muted">Shown on every page. Use {"{page}"} and {"{pages}"} for page numbers, e.g. Page {"{page}"} of {"{pages}"}.</p>
+            </section>
+          )}
+          </>
         )}
       </aside>
     </div>
