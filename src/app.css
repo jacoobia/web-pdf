@@ -54,6 +54,7 @@ body { margin: 0; background: var(--bg); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
 .btn.on { background: var(--accent-soft); border-color: var(--accent); }
 .btn.danger { color: var(--bad); }
+.btn.icon { padding: 6px; }
 .btn:focus-visible, .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 

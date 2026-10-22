@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
   STANDARD_FONTS, compact, exportPdf, extract, fontHelp, fontKey, isDirty, renderPage,
   type El, type PageInfo,
@@ -14,6 +14,34 @@ const cssFont = (key: string) => {
     : { fontFamily: `"pf-${key}"`, fontWeight: 400, fontStyle: "normal" };
 };
 
+/** useState that survives reloads. Storage can be blocked, so it's best-effort. */
+function usePref(key: string, initial: string) {
+  const [value, setValue] = useState(() => {
+    try {
+      return localStorage.getItem(key) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  }, [key, value]);
+  return [value, setValue] as const;
+}
+
+function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button className="btn icon" aria-label={label} title={label} onClick={onClick}>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+      </svg>
+    </button>
+  );
+}
+
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export default function App() {
@@ -26,19 +54,8 @@ export default function App() {
   const [adding, setAdding] = useState(false);
   const [report, setReport] = useState<{ ok: boolean; lines: string[] } | null>(null);
   const [, rerender] = useState(0);
-  const [theme, setTheme] = useState(() => {
-    try {
-      const saved = localStorage.getItem("theme");
-      if (saved) return saved;
-    } catch {}
-    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem("theme", theme);
-    } catch {}
-  }, [theme]);
+  const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -277,9 +294,19 @@ export default function App() {
           <button className="btn" onClick={() => setScale((s) => Math.min(4, s + 0.25))}>+</button>
         </span>
         <span className="grow">{file?.name}</span>
-        <button className="btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          {theme === "dark" ? "Light mode" : "Dark mode"}
-        </button>
+        <IconButton
+          label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? (
+            <>
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            </>
+          ) : (
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
+          )}
+        </IconButton>
         <button className="btn primary" disabled={!file} onClick={save}>Save edited PDF</button>
       </header>
 
