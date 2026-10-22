@@ -274,10 +274,12 @@ export default function App() {
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
       }
+      // Without a save picker the browser takes over (and may ask where to save), so don't claim it's saved.
+      const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
       setReport(
         problems.length
-          ? { ok: false, lines: [`Saved ${name}, but check these:`, ...problems] }
-          : { ok: true, lines: [`Saved ${name}`, "Old text is gone and all new text reads back correctly."] },
+          ? { ok: false, lines: [`${done} Check these first:`, ...problems] }
+          : { ok: true, lines: [done, "Old text is gone and all new text reads back correctly."] },
       );
     } catch (err) {
       setReport({ ok: false, lines: [`Not saved: ${(err as Error).message}`] });

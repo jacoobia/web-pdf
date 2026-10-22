@@ -114,15 +114,14 @@ input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--line); 
 .note a { color: var(--accent); }
 
 .toast {
-  position: fixed; z-index: 10; left: 50%; transform: translateX(-50%);
+  position: fixed; z-index: 10; right: 20px;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  width: max-content; max-width: min(560px, calc(100vw - 32px));
+  width: max-content; max-width: min(420px, calc(100vw - 32px));
   display: flex; align-items: flex-start; gap: 12px;
-  padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); border-left: 4px solid var(--accent);
+  padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--panel); color: var(--text); box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
 }
-.toast.ok { border-left-color: var(--ok); }
-.toast.bad { border-left-color: var(--bad); }
+.toast.bad .toast-body p:first-child { color: var(--bad); font-weight: 600; }
 .toast-body { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
 .toast-body p { margin: 0; }
 .toast-body p + p { color: var(--muted); font-size: 13px; }
