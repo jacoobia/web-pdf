@@ -73,6 +73,8 @@ export default function App() {
     page: number; box: Box; others: Box[];
   } | null>(null);
   const [guides, setGuides] = useState<(Guides & { page: number }) | null>(null);
+  const marquee = useRef<{ page: number; x: number; y: number; base: string[]; boxes: (readonly [string, Box])[] } | null>(null);
+  const [band, setBand] = useState<{ page: number; l: number; r: number; t: number; b: number } | null>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
 
   // `touch` groups rapid edits (typing, dragging) into one undo step.
@@ -259,6 +261,11 @@ export default function App() {
       }
       if (isTyping(e.target)) return;
       if (e.key === "Escape") (setSel([]), setAdding(false));
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
+        return;
+      }
       if (!sel.length) return;
       if (e.key === "Delete" || e.key === "Backspace") (e.preventDefault(), remove(sel));
       const step = e.shiftKey ? 10 : 1;
@@ -274,20 +281,21 @@ export default function App() {
     return () => (window.removeEventListener("keydown", onKey), window.removeEventListener("beforeunload", onLeave));
   });
 
+  // Measured from what's on screen, since redrawn text's width depends on the browser's font rendering.
+  const boxOf = (x: El): Box => {
+    const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
+    const l = n ? n.offsetLeft / scale : x.x, t = n ? n.offsetTop / scale : x.y;
+    return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base: x.y + x.ascent * x.size };
+  };
+
   const onElDown = (e: RPointerEvent, el: El) => {
     if (adding) return;
     e.stopPropagation();
-    const ids = e.shiftKey
+    const ids = e.shiftKey || e.ctrlKey || e.metaKey
       ? sel.includes(el.id) ? sel.filter((i) => i !== el.id) : [...sel, el.id]
       : sel.includes(el.id) ? sel : [el.id];
     setSel(ids);
     const start = new Map(elsRef.current.filter((x) => ids.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
-    // Measured from what's on screen, since redrawn text's width depends on the browser's font rendering.
-    const boxOf = (x: El): Box => {
-      const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
-      const l = n ? n.offsetLeft / scale : x.x, t = n ? n.offsetTop / scale : x.y;
-      return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base: x.y + x.ascent * x.size };
-    };
     const onPage = elsRef.current.filter((o) => o.page === el.page && !o.deleted);
     const group = onPage.filter((o) => ids.includes(o.id)).map(boxOf);
     const box = group.length
@@ -323,8 +331,17 @@ export default function App() {
     setGuides(null);
   };
 
+  // Box selection: drag across empty page space. Shift/Ctrl adds to the current selection.
   const onPageDown = (e: RPointerEvent, page: number) => {
-    if (!adding) return e.shiftKey || setSel([]);
+    if (!adding) {
+      const r = e.currentTarget.getBoundingClientRect();
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      const boxes = elsRef.current.filter((o) => o.page === page && !o.deleted).map((o) => [o.id, boxOf(o)] as const);
+      marquee.current = { page, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, base: additive ? sel : [], boxes };
+      if (!additive) setSel([]);
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
     e.preventDefault(); // otherwise the click's mousedown steals focus from the new text box
     const box = e.currentTarget.getBoundingClientRect();
     const last = elsRef.current.find((x) => x.id === sel[0]);
@@ -339,8 +356,25 @@ export default function App() {
     setAdding(false);
   };
 
+  const onPageMove = (e: RPointerEvent) => {
+    const m = marquee.current;
+    if (!m) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
+    const box = { l: Math.min(m.x, x), r: Math.max(m.x, x), t: Math.min(m.y, y), b: Math.max(m.y, y) };
+    setBand({ page: m.page, ...box });
+    const hit = m.boxes.filter(([, b]) => b.r >= box.l && b.l <= box.r && b.b >= box.t && b.t <= box.b).map(([id]) => id);
+    setSel([...new Set([...m.base, ...hit])]);
+  };
+  const onPageUp = () => {
+    marquee.current = null;
+    setBand(null);
+  };
+
   const selected = els.filter((e) => sel.includes(e.id));
   const one = selected.length === 1 ? selected[0] : null;
+  const shared = <K extends keyof El>(k: K) => (selected.every((e) => e[k] === selected[0][k]) ? selected[0]?.[k] : undefined);
+  const [font, size, color] = [shared("font"), shared("size"), shared("color")];
   const rotated = pages.some((p) => p.rotated);
 
   return (
@@ -401,8 +435,16 @@ export default function App() {
             className={adding ? "page adding" : "page"}
             style={{ width: pg.w * scale, height: pg.h * scale }}
             onPointerDown={(e) => (e.stopPropagation(), onPageDown(e, p))}
+            onPointerMove={onPageMove}
+            onPointerUp={onPageUp}
           >
             {images.current.get(p) && <img src={images.current.get(p)!.url} alt="" draggable={false} />}
+            {band?.page === p && (
+              <div
+                className="marquee"
+                style={{ left: band.l * scale, top: band.t * scale, width: (band.r - band.l) * scale, height: (band.b - band.t) * scale }}
+              />
+            )}
             {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
             {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
             {els.filter((el) => el.page === p && !el.deleted).map((el) => {
@@ -447,7 +489,8 @@ export default function App() {
 
         {!selected.length && file && (
           <p className="muted">
-            Click text to select it, then drag to move. Shift+click selects several. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
+            Click text to select it, then drag to move. Drag across empty space to select a group, Shift or Ctrl+click
+            to add or remove, Ctrl+A to select everything; selected text moves together. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
             Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
           </p>
         )}
@@ -469,19 +512,19 @@ export default function App() {
             <div className="grid">
               <label className="wide">
                 Font
-                <select value={one?.font ?? ""} onChange={(e) => patch(sel, { font: e.target.value })}>
-                  {!one && <option value="">(mixed)</option>}
+                <select value={font ?? ""} onChange={(e) => patch(sel, { font: e.target.value })}>
+                  {font === undefined && <option value="">(mixed)</option>}
                   {available.map((f) => <option key={f}>{f}</option>)}
                 </select>
               </label>
               <label>
                 Size
-                <input type="number" step="0.5" min="1" value={one?.size ?? ""} placeholder="mixed"
+                <input type="number" step="0.5" min="1" value={size ?? ""} placeholder="mixed"
                   onChange={(e) => +e.target.value > 0 && patch(sel, { size: +e.target.value }, "size:" + sel)} />
               </label>
               <label>
                 Colour
-                <input type="color" value={one?.color ?? "#000000"} onChange={(e) => patch(sel, { color: e.target.value }, "color:" + sel)} />
+                <input type="color" value={color ?? "#000000"} onChange={(e) => patch(sel, { color: e.target.value }, "color:" + sel)} />
               </label>
               {one && (["x", "y"] as const).map((k) => (
                 <label key={k}>
