@@ -81,6 +81,9 @@ export default function App() {
       setEls(list);
       setSel([]);
       setReport(null);
+      const have = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)].map(compact);
+      const need = [...new Set(list.map((e) => e.srcFont).filter((s) => s && !have.includes(compact(s))))];
+      if (need.length && "queryLocalFonts" in window) await findInstalled(need, true);
     } catch (err) {
       setReport({ ok: false, lines: [`Couldn't open ${f.name}: ${(err as Error).message}`] });
     }
@@ -113,16 +116,19 @@ export default function App() {
   const missing = sourceFonts.filter((s) => !available.some((k) => compact(k) === compact(s)));
 
   // Chrome/Edge only: pull exact matches from fonts installed on this PC.
-  const findInstalled = async () => {
+  // `auto` runs straight after opening a PDF; the browser may refuse without a click, so stay quiet on failure.
+  async function findInstalled(wanted: string[], auto = false) {
     try {
       const local: { postscriptName: string; blob(): Promise<Blob> }[] = await (window as any).queryLocalFonts();
+      if (auto && !local.length) return;
       const found: string[] = [];
-      for (const s of missing) {
+      for (const s of wanted) {
         const hit = local.find((f) => compact(f.postscriptName) === compact(s));
         if (hit && (await addFont(new Uint8Array(await (await hit.blob()).arrayBuffer()), hit.postscriptName)))
           found.push(hit.postscriptName);
       }
-      const left = missing.filter((s) => !found.some((f) => compact(f) === compact(s)));
+      const left = wanted.filter((s) => !found.some((f) => compact(f) === compact(s)));
+      if (auto && !found.length) return;
       setReport({
         ok: !left.length,
         lines: [
@@ -131,9 +137,9 @@ export default function App() {
         ],
       });
     } catch (err) {
-      setReport({ ok: false, lines: [`Couldn't read installed fonts: ${(err as Error).message}`] });
+      if (!auto) setReport({ ok: false, lines: [`Couldn't read installed fonts: ${(err as Error).message}`] });
     }
-  };
+  }
 
   const save = async () => {
     if (!file) return;
@@ -408,7 +414,7 @@ export default function App() {
                 <input type="file" accept=".ttf,.otf" multiple hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
               </label>
               {"queryLocalFonts" in window && missing.length > 0 && (
-                <button className="btn" onClick={findInstalled}>Find on this PC</button>
+                <button className="btn" onClick={() => findInstalled(missing)}>Find on this PC</button>
               )}
             </div>
             <p className="muted">
