@@ -56,6 +56,7 @@ export default function App() {
   const [, rerender] = useState(0);
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
+  const [side, setSide] = usePref("side", "right");
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -275,7 +276,7 @@ export default function App() {
 
   return (
     <div
-      className="app"
+      className={`app side-${side}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => (e.preventDefault(), openFiles(e.dataTransfer.files))}
     >
@@ -294,6 +295,13 @@ export default function App() {
           <button className="btn" onClick={() => setScale((s) => Math.min(4, s + 0.25))}>+</button>
         </span>
         <span className="grow">{file?.name}</span>
+        <IconButton
+          label={side === "right" ? "Move sidebar to the left" : "Move sidebar to the right"}
+          onClick={() => setSide(side === "right" ? "left" : "right")}
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <path d={side === "right" ? "M9 4v16" : "M15 4v16"} />
+        </IconButton>
         <IconButton
           label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
