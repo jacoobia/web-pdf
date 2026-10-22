@@ -117,6 +117,16 @@ export default function App() {
     elsRef.current = prev;
     setEls(prev);
   };
+  // Copies are new content: no original to remove, drawn fresh on save.
+  const addCopies = (src: El[], dx: number, dy: number, page?: number) => {
+    const copies = src.map(({ orig: _o, deleted: _d, ...e }) => ({
+      ...e, id: "new-" + crypto.randomUUID(), page: page ?? e.page, x: e.x + dx, y: e.y + dy,
+    }));
+    commit([...elsRef.current, ...copies]);
+    setSel(copies.map((c) => c.id));
+  };
+  const clip = useRef<{ els: El[]; text: string; pastes: number } | null>(null);
+
   const remove = (ids: string[]) => {
     commit(elsRef.current.filter((e) => !(ids.includes(e.id) && !e.orig)).map((e) => (ids.includes(e.id) ? { ...e, deleted: true } : e)));
     setSel([]);
@@ -330,6 +340,7 @@ export default function App() {
         return;
       }
       if (!sel.length) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") return e.preventDefault(), addCopies(selected, 10, 10);
       if (e.key === "Delete" || e.key === "Backspace") (e.preventDefault(), remove(sel));
       const step = e.shiftKey ? 10 : 1;
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
@@ -348,9 +359,43 @@ export default function App() {
       }
     };
     const onLeave = (e: BeforeUnloadEvent) => past.current.length && e.preventDefault();
+    // Clipboard events rather than keys: no permission prompt, and text reaches other apps too.
+    const onCopy = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || !selected.length) return;
+      const text = selected.filter((x) => !x.image).map((x) => x.text).join("\n");
+      clip.current = { els: selected, text, pastes: 0 };
+      e.clipboardData?.setData("text/plain", text);
+      e.preventDefault();
+      if (e.type === "cut") remove(sel);
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || !file) return;
+      e.preventDefault();
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      const c = clip.current, page = selected[0]?.page;
+      if (c && text === c.text) return c.pastes++, addCopies(c.els, 10 * c.pastes, 10 * c.pastes, page);
+      if (!text.trim()) return;
+      // Text from another app: new text under the selected text, or at the top of the first page.
+      const like = selected.find((x) => !x.image);
+      addCopies([{
+        id: "", page: like?.page ?? 0, text: text.replace(/\r\n?/g, "\n").trim(),
+        x: like?.x ?? margin ?? 36, y: like ? like.y - 10 : (margin ?? 36) - 10, ascent: 0.8,
+        size: like?.size ?? 11, color: like?.color ?? "#000000", font: like?.font ?? "Helvetica",
+        srcFont: "", bold: false, italic: false,
+      }], 0, like ? like.size * LINE_HEIGHT + 10 : 10);
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("beforeunload", onLeave);
-    return () => (window.removeEventListener("keydown", onKey), window.removeEventListener("beforeunload", onLeave));
+    window.addEventListener("copy", onCopy);
+    window.addEventListener("cut", onCopy);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("beforeunload", onLeave);
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("cut", onCopy);
+      window.removeEventListener("paste", onPaste);
+    };
   });
 
   // Measured from what's on screen, since redrawn text's width depends on the browser's font rendering.
@@ -617,6 +662,7 @@ export default function App() {
               Shift or Ctrl+click to add or remove, Ctrl+A to select everything; the selection moves together.
               While dragging, things snap into line; hold Shift to move freely or Ctrl to move in whole points.
               Double-click text to reword. Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
+              Ctrl+C, X and V copy, cut and paste; Ctrl+D duplicates.
             </p>
           )}
 
