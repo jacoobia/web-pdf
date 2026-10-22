@@ -44,19 +44,23 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
+const PDF_TYPE = { description: "PDF", accept: { "application/pdf": [".pdf"] } };
+
 type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export default function App() {
-  const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null);
+  // `handle` (Chrome/Edge) lets the save dialog open in the folder the PDF came from.
+  const [file, setFile] = useState<{ name: string; bytes: Uint8Array; handle?: FileSystemFileHandle } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [els, setEls] = useState<El[]>([]);
   const [sel, setSel] = useState<string[]>([]);
   const [fonts, setFonts] = useState(new Map<string, Uint8Array>());
   const [scale, setScale] = useState(1.5);
   const [adding, setAdding] = useState(false);
-  const [report, setReport] = useState<{ ok: boolean; lines: string[] } | null>(null);
+  const [report, setReport] = useState<{ ok: boolean; lines: string[]; busy?: boolean } | null>(null);
+  const pdfInput = useRef<HTMLInputElement>(null);
   const [, rerender] = useState(0);
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
@@ -112,7 +116,7 @@ export default function App() {
         : e,
     );
 
-  const openPdf = async (f: File) => {
+  const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const { pages, els } = extract(bytes);
@@ -122,7 +126,7 @@ export default function App() {
       images.current.clear();
       past.current = [];
       elsRef.current = list;
-      setFile({ name: f.name, bytes });
+      setFile({ name: f.name, bytes, handle });
       setPages(pages);
       setEls(list);
       setSel([]);
@@ -149,9 +153,10 @@ export default function App() {
     }
   };
 
-  const openFiles = async (files: FileList | null) => {
-    for (const f of files ?? []) {
-      if (/\.pdf$/i.test(f.name)) await openPdf(f);
+  const openFiles = async (files: FileList | null, handles: (Promise<FileSystemHandle | null> | undefined)[] = []) => {
+    for (const [i, f] of [...(files ?? [])].entries()) {
+      if (/\.pdf$/i.test(f.name))
+        await openPdf(f, ((await handles[i]?.catch(() => null)) as FileSystemFileHandle | null) ?? undefined);
       else if (/\.(ttf|otf)$/i.test(f.name)) await addFont(new Uint8Array(await f.arrayBuffer()), f.name);
       else setReport({ ok: false, lines: [`${f.name}: open a .pdf, or a .ttf/.otf font.`] });
     }
@@ -217,25 +222,62 @@ export default function App() {
     }
   }
 
+  const pickPdf = async () => {
+    if (!("showOpenFilePicker" in window)) return pdfInput.current?.click();
+    try {
+      const [handle] = await (window as any).showOpenFilePicker({ types: [PDF_TYPE] });
+      await openPdf(await handle.getFile(), handle);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") setReport({ ok: false, lines: [`Couldn't open: ${(err as Error).message}`] });
+    }
+  };
+
   const save = async () => {
     if (!file) return;
+    const suggestedName = file.name.replace(/\.pdf$/i, "") + "-edited.pdf";
+    // Ask where first: the picker needs the click's user activation, which an export could outlast.
+    let target: FileSystemFileHandle | undefined;
+    if ("showSaveFilePicker" in window) {
+      const pick = (startIn: unknown) => (window as any).showSaveFilePicker({ suggestedName, startIn, types: [PDF_TYPE] });
+      try {
+        target = await pick(file.handle ?? "documents").catch((err: Error) =>
+          err.name === "AbortError" ? Promise.reject(err) : pick("documents"),
+        );
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+      }
+    }
+    const name = target?.name ?? suggestedName;
+    setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
+    await new Promise((r) => setTimeout(r, 30)); // let the toast paint before the export blocks the page
     try {
       const { pdf, problems } = await exportPdf(file.bytes, [...elsRef.current, ...hfEls], fonts);
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([pdf as BlobPart], { type: "application/pdf" }));
-      a.download = file.name.replace(/\.pdf$/i, "") + "-edited.pdf";
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
-      setReport({
-        ok: !problems.length,
-        lines: problems.length
-          ? [`Saved ${a.download}, but check these:`, ...problems]
-          : [`Saved ${a.download}. Checked: old text is gone and all new text reads back correctly.`],
-      });
+      if (target) {
+        const out = await target.createWritable();
+        await out.write(pdf as BufferSource);
+        await out.close();
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([pdf as BlobPart], { type: "application/pdf" }));
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      }
+      setReport(
+        problems.length
+          ? { ok: false, lines: [`Saved ${name}, but check these:`, ...problems] }
+          : { ok: true, lines: [`Saved ${name}`, "Old text is gone and all new text reads back correctly."] },
+      );
     } catch (err) {
       setReport({ ok: false, lines: [`Not saved: ${(err as Error).message}`] });
     }
   };
+
+  useEffect(() => {
+    if (!report?.ok || report.busy) return;
+    const t = setTimeout(() => setReport((r) => (r === report ? null : r)), 4000);
+    return () => clearTimeout(t);
+  }, [report]);
 
   // Re-render a page image only when the set of removed originals on it changes.
   useEffect(() => {
@@ -394,13 +436,16 @@ export default function App() {
     <div
       className={`app side-${side}`}
       onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => (e.preventDefault(), openFiles(e.dataTransfer.files))}
+      onDrop={(e) => {
+        e.preventDefault();
+        // Handles must be requested before the drop event ends.
+        const handles = [...e.dataTransfer.items].map((i) => (i as any).getAsFileSystemHandle?.());
+        openFiles(e.dataTransfer.files, handles);
+      }}
     >
       <header className="toolbar">
-        <label className="btn primary">
-          Open PDF
-          <input type="file" accept=".pdf" hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
-        </label>
+        <button className="btn primary" onClick={pickPdf}>Open PDF</button>
+        <input ref={pdfInput} type="file" accept=".pdf" hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
         <button className={adding ? "btn on" : "btn"} disabled={!file} onClick={() => setAdding(!adding)}>
           {adding ? "Click the page…" : "Add text"}
         </button>
@@ -489,14 +534,15 @@ export default function App() {
         ))}
       </main>
 
-      <aside className="side">
-        {report && (
-          <div className={report.ok ? "note ok" : "note bad"}>
-            {report.lines.map((l, i) => <p key={i}>{l}</p>)}
-            <button className="link" onClick={() => setReport(null)}>Dismiss</button>
-          </div>
-        )}
+      {report && (
+        <div className={`toast ${report.busy ? "" : report.ok ? "ok" : "bad"}`} role={report.ok ? "status" : "alert"}>
+          {report.busy && <span className="spinner" aria-hidden="true" />}
+          <div className="toast-body">{report.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+          {!report.busy && <button className="link" onClick={() => setReport(null)}>Dismiss</button>}
+        </div>
+      )}
 
+      <aside className="side">
         {!selected.length && file && (
           <p className="muted">
             Click text to select it, then drag to move. Drag across empty space to select a group, Shift or Ctrl+click
