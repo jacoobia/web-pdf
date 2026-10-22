@@ -60,7 +60,26 @@ body { margin: 0; background: var(--bg); }
 .link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 
 .pages { grid-area: pages; overflow: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
-.empty { margin: auto; text-align: center; font-size: 16px; }
+.empty { margin: auto; text-align: center; font-size: 16px; width: min(480px, 100%); }
+.recent { margin-top: 28px; text-align: left; }
+.recent h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px 12px; }
+.recent ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.recent li { position: relative; }
+.recent-row {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 44px 10px 12px;
+  border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 120ms, transform 80ms;
+}
+.recent li:hover .recent-row { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.recent-row:active { transform: scale(0.985); background: color-mix(in srgb, var(--accent) 26%, transparent) !important; }
+.recent-row:focus-visible, .recent-x:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.recent-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-x {
+  position: absolute; top: 50%; right: 8px; transform: translateY(-50%); width: 28px; height: 28px;
+  border: 0; border-radius: 6px; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.recent-x:hover { background: var(--bad-soft); color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .recent-row { transition: none; } .recent-row:active { transform: none; } }
 .warn { background: var(--bad-soft); color: var(--bad); padding: 8px 12px; border-radius: 6px; }
 
 .page { position: relative; flex: none; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); user-select: none; }

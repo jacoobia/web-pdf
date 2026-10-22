@@ -48,6 +48,30 @@ const TABS = [["edit", "Edit"], ["fonts", "Fonts"], ["page", "Page"]] as const;
 
 const PDF_TYPE = { description: "PDF", accept: { "application/pdf": [".pdf"] } };
 
+// Recently opened. Browsers never reveal file paths, so names and dates go in localStorage, and file
+// handles (Chrome/Edge only) in IndexedDB, the only storage that can hold them.
+type Recent = { name: string; openedAt: number; handle: boolean };
+const readRecent = (): Recent[] => {
+  try {
+    return JSON.parse(localStorage.getItem("recent") ?? "[]");
+  } catch {
+    return [];
+  }
+};
+const handles = <T,>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>) =>
+  new Promise<T>((resolve, reject) => {
+    const open = indexedDB.open("pdf-editor", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("handles");
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const req = run(open.result.transaction("handles", mode).objectStore("handles"));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    };
+  });
+const openedAt = (t: number) =>
+  new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
@@ -63,6 +87,35 @@ export default function App() {
   const [adding, setAdding] = useState(false);
   const [report, setReport] = useState<{ ok: boolean; lines: string[]; busy?: boolean } | null>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
+  const [recent, setRecent] = useState(readRecent);
+  // ponytail: keyed by file name, so two different files with the same name share one entry
+  const saveRecent = (list: Recent[]) => {
+    setRecent(list);
+    try {
+      localStorage.setItem("recent", JSON.stringify(list));
+    } catch {}
+  };
+  const remember = (name: string, handle?: FileSystemFileHandle) => {
+    const old = recent.find((r) => r.name === name);
+    saveRecent([{ name, openedAt: Date.now(), handle: !!handle || !!old?.handle }, ...recent.filter((r) => r !== old)].slice(0, 8));
+    if (handle) handles("readwrite", (s) => s.put(handle, name)).catch(() => {});
+  };
+  const forget = (name: string) => {
+    saveRecent(recent.filter((r) => r.name !== name));
+    handles("readwrite", (s) => s.delete(name)).catch(() => {});
+  };
+  const reopen = async (r: Recent) => {
+    try {
+      const h = r.handle ? await handles<FileSystemFileHandle | undefined>("readonly", (s) => s.get(r.name)) : undefined;
+      if (!h) return pickPdf();
+      const perm = h as unknown as { queryPermission(o: object): Promise<string>; requestPermission(o: object): Promise<string> };
+      if ((await perm.queryPermission({ mode: "read" })) !== "granted" && (await perm.requestPermission({ mode: "read" })) !== "granted")
+        return;
+      await openPdf(await h.getFile(), h);
+    } catch {
+      setReport({ ok: false, lines: [`Couldn't reopen ${r.name}.`, "It may have been moved, renamed or deleted. Open it again to refresh the entry."] });
+    }
+  };
   const [, rerender] = useState(0);
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
@@ -159,6 +212,7 @@ export default function App() {
       past.current = [];
       elsRef.current = list;
       setFile({ name: f.name, bytes, handle });
+      remember(f.name, handle);
       setPages(pages);
       setEls(list);
       setSel([]);
@@ -635,6 +689,28 @@ export default function App() {
           <div className="empty">
             <p>Open a PDF or drop one here.</p>
             <p className="muted">Everything stays on this computer. Nothing is uploaded.</p>
+            {recent.length > 0 && (
+              <section className="recent" aria-label="Recently opened">
+                <h2>Recently opened</h2>
+                <ul>
+                  {recent.map((r) => (
+                    <li key={r.name}>
+                      <button className="recent-row" onClick={() => reopen(r)}>
+                        <span className="recent-name">{r.name}</span>
+                        <span className="muted">
+                          {openedAt(r.openedAt)}
+                          {!r.handle && " · opens the file picker"}
+                        </span>
+                      </button>
+                      <button className="recent-x" aria-label={`Remove ${r.name} from recent files`} title="Remove from list"
+                        onClick={() => forget(r.name)}>
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         )}
         {rotated && <div className="warn">This PDF has rotated pages. Edits on those pages will land in the wrong place.</div>}
