@@ -222,8 +222,10 @@ export async function exportPdf(
     const page = pages[el.page];
     const box = page.getCropBox();
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(el.color.slice(i, i + 2), 16) / 255);
-    el.text.split("\n").forEach((line, i) => {
-      if (!line.trim()) return;
+    el.text.split("\n").forEach((raw, i) => {
+      if (!raw.trim()) return;
+      // Built-in fonts only cover WinAnsi; these have an identical-looking plain "-" there.
+      const line = STANDARD_FONTS[el.font] ? raw.replace(HYPHENS, "-") : raw;
       const bad = [...line].find((ch) => {
         try {
           font.encodeText(ch);
@@ -250,8 +252,9 @@ export async function exportPdf(
   return { pdf, problems: verify(pdf, els) };
 }
 
-// Fonts often share one glyph for U+2010/2011 and "-", so it reads back as "-".
-const norm = (s: string) => s.replace(/[‐‑]/g, "-").replace(/\s+/g, " ").trim();
+// Hyphen, non-breaking hyphen, minus sign. Often the same glyph as "-", so they read back as "-".
+const HYPHENS = /[\u2010\u2011\u2212]/g;
+const norm = (s: string) => s.replace(HYPHENS, "-").replace(/\s+/g, " ").trim();
 
 /** Re-read the output: old text must be gone, new text must be extractable. */
 function verify(pdf: Uint8Array, els: El[]): string[] {

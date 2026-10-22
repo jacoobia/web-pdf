@@ -22,7 +22,7 @@ set("Led a team of four.", { text: "Led a team of six engineers.", font: key });
 set("Senior Widget Engineer at Acme Ltd", { y: find("Senior Widget Engineer at Acme Ltd").y - 20 });
 set("Cut costs by half.", { deleted: true });
 els.push({
-  id: "new", page: 0, text: "Café latte two-liner\nsecond line", x: 40, y: 300, ascent: 0.8,
+  id: "new", page: 0, text: "Café latte two\u2010liner\nsecond line", x: 40, y: 300, ascent: 0.8,
   size: 11, color: "#000000", font: "Helvetica", srcFont: "", bold: false, italic: false,
 });
 
