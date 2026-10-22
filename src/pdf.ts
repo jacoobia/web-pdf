@@ -21,6 +21,7 @@ export type El = Style & {
   italic: boolean;
   deleted?: boolean;
   orig?: Style & { text: string; x: number; y: number; rect: Rect };
+  align?: "left" | "center" | "right"; // which edge of the text sits at x
 };
 
 export type PageInfo = { w: number; h: number; rotated: boolean };
@@ -95,6 +96,36 @@ export function fallbackFont(name: string, bold: boolean, italic: boolean): stri
       : "Helvetica";
   if (fam === "Times") return `Times-${bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Roman"}`;
   return bold || italic ? `${fam}-${bold ? "Bold" : ""}${italic ? "Oblique" : ""}` : fam;
+}
+
+export type HeaderFooter = Style & {
+  header: string[]; // left, centre, right
+  footer: string[];
+  margin: number; // points from the page edge
+  skipFirst: boolean;
+};
+
+const ALIGNS = ["left", "center", "right"] as const;
+
+/** Header/footer text as plain new elements, with {page} and {pages} filled in. */
+export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
+  const els: El[] = [];
+  pages.forEach((pg, p) => {
+    if (hf.skipFirst && p === 0) return;
+    const rows = [["h", hf.header, hf.margin], ["f", hf.footer, pg.h - hf.margin - hf.size]] as const;
+    for (const [row, texts, y] of rows)
+      texts.forEach((text, i) => {
+        if (!text.trim()) return;
+        els.push({
+          id: `hf-${row}${i}-${p}`, page: p, y, ascent: 0.8, align: ALIGNS[i],
+          x: [hf.margin, pg.w / 2, pg.w - hf.margin][i],
+          text: text.replace(/\{page\}/g, String(p + 1)).replace(/\{pages\}/g, String(pages.length)),
+          font: hf.font, size: hf.size, color: hf.color,
+          srcFont: "", bold: isBoldName(hf.font), italic: isItalicName(hf.font),
+        });
+      });
+  });
+  return els;
 }
 
 export function isDirty(el: El): boolean {
@@ -248,8 +279,9 @@ export async function exportPdf(
           `${el.font} has no "${bad}" (U+${bad.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}), used in "${line}". ` +
             `Load the original font (or one that has this character) and choose it for this text.`,
         );
+      const w = el.align && el.align !== "left" ? font.widthOfTextAtSize(line, el.size) : 0;
       page.drawText(line, {
-        x: box.x + el.x,
+        x: box.x + el.x - (el.align === "center" ? w / 2 : w),
         y: box.y + box.height - el.y - el.ascent * el.size - i * el.size * LINE_HEIGHT,
         size: el.size,
         font,

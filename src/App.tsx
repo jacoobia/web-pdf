@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
-  STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, isBoldName, isDirty, isItalicName,
-  pickFace, renderPage,
+  STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
+  isItalicName, pickFace, renderPage, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
 import { snap, type Box, type Guides } from "./snap";
@@ -63,6 +63,9 @@ export default function App() {
   const [side, setSide] = usePref("side", "right");
   const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
   const [installed, setInstalled] = useState<LocalFont[]>([]);
+  const [hf, setHf] = useState<HeaderFooter>({
+    header: ["", "", ""], footer: ["", "", ""], font: "Helvetica", size: 9, color: "#555555", margin: 36, skipFirst: false,
+  });
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -217,7 +220,7 @@ export default function App() {
   const save = async () => {
     if (!file) return;
     try {
-      const { pdf, problems } = await exportPdf(file.bytes, elsRef.current, fonts);
+      const { pdf, problems } = await exportPdf(file.bytes, [...elsRef.current, ...hfEls], fonts);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([pdf as BlobPart], { type: "application/pdf" }));
       a.download = file.name.replace(/\.pdf$/i, "") + "-edited.pdf";
@@ -371,6 +374,16 @@ export default function App() {
     setBand(null);
   };
 
+  const hfEls = headerFooterEls(hf, pages);
+  const drawnStyle = (el: El) => ({
+    left: el.x * scale,
+    top: (el.y + (el.ascent - CSS_BASELINE) * el.size) * scale,
+    fontSize: el.size * scale,
+    color: el.color,
+    transform: el.align === "center" ? "translateX(-50%)" : el.align === "right" ? "translateX(-100%)" : undefined,
+    ...cssFont(el.font),
+  });
+
   const selected = els.filter((e) => sel.includes(e.id));
   const one = selected.length === 1 ? selected[0] : null;
   const shared = <K extends keyof El>(k: K) => (selected.every((e) => e[k] === selected[0][k]) ? selected[0]?.[k] : undefined);
@@ -451,13 +464,7 @@ export default function App() {
               const dirty = isDirty(el);
               const r = el.orig?.rect;
               const box = dirty || !r
-                ? {
-                    left: el.x * scale,
-                    top: (el.y + (el.ascent - CSS_BASELINE) * el.size) * scale,
-                    fontSize: el.size * scale,
-                    color: el.color,
-                    ...cssFont(el.font),
-                  }
+                ? drawnStyle(el)
                 : { left: r.x * scale, top: r.y * scale, width: r.w * scale, height: r.h * scale };
               return (
                 <div
@@ -475,6 +482,9 @@ export default function App() {
                 </div>
               );
             })}
+            {hfEls.filter((el) => el.page === p).map((el) => (
+              <div key={el.id} className="el drawn hf" style={drawnStyle(el)}>{el.text}</div>
+            ))}
           </div>
         ))}
       </main>
@@ -588,6 +598,53 @@ export default function App() {
               in C:\Windows\Fonts.
             </p>
           </section>
+        )}
+
+        {file && (
+          <details>
+            <summary><h2>Header &amp; footer</h2></summary>
+            {(["header", "footer"] as const).map((row) => (
+              <div key={row} className="grid three">
+                {["Left", "Centre", "Right"].map((label, i) => (
+                  <label key={label}>
+                    {row === "header" ? "Header" : "Footer"} {label.toLowerCase()}
+                    <input
+                      type="text"
+                      value={hf[row][i]}
+                      onChange={(e) => setHf({ ...hf, [row]: hf[row].map((t, j) => (j === i ? e.target.value : t)) })}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+            <div className="grid">
+              <label className="wide">
+                Font
+                <select value={hf.font} onChange={(e) => setHf({ ...hf, font: e.target.value })}>
+                  {available.map((f) => <option key={f}>{f}</option>)}
+                </select>
+              </label>
+              <label>
+                Size
+                <input type="number" step="0.5" min="1" value={hf.size}
+                  onChange={(e) => +e.target.value > 0 && setHf({ ...hf, size: +e.target.value })} />
+              </label>
+              <label>
+                Colour
+                <input type="color" value={hf.color} onChange={(e) => setHf({ ...hf, color: e.target.value })} />
+              </label>
+              <label>
+                From edge (pt)
+                <input type="number" step="1" min="0" value={hf.margin}
+                  onChange={(e) => e.target.value !== "" && setHf({ ...hf, margin: +e.target.value })} />
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={hf.skipFirst} onChange={(e) => setHf({ ...hf, skipFirst: e.target.checked })} />
+                Skip first page
+              </label>
+            </div>
+            <p className="muted">Shown on every page. Use {"{page}"} and {"{pages}"} for page numbers, e.g. Page {"{page}"} of {"{pages}"}.</p>
+          </details>
         )}
 
         {file && (

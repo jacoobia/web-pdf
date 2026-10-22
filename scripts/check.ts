@@ -1,7 +1,7 @@
 // End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { extract, exportPdf, familyOf, fontKey, pickFace, renderPage, type El } from "../src/pdf";
+import { extract, exportPdf, familyOf, fontKey, headerFooterEls, pickFace, renderPage, type El } from "../src/pdf";
 import { snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
@@ -73,6 +73,18 @@ s = snap(box, [other], 0, 0, 3, 595);
 assert.deepEqual([s.dx, s.dy, s.guides], [0, 0, { x: undefined, y: undefined }]);
 s = snap(box, [], 268, 0, 3, 595); // centre 298 -> page centre 297.5
 assert.equal(s.guides.x, 297.5);
+
+// header and footer: page numbers filled in, right-aligned text ends at the margin
+const hfCfg = { header: ["", "", "Jane Example CV"], footer: ["", "Page {page} of {pages}", ""], margin: 36,
+  skipFirst: false, font: "Helvetica", size: 9, color: "#555555" };
+const hf = headerFooterEls(hfCfg, pages);
+assert.deepEqual(hf.map((e) => e.text), ["Jane Example CV", "Page 1 of 1"]);
+const withHf = extract((await exportPdf(src, hf, new Map())).pdf).els;
+const right = withHf.find((e) => e.text === "Jane Example CV")!.orig!.rect;
+assert.ok(Math.abs(right.x + right.w - (595 - 36)) < 1, `right edge ${right.x + right.w}`);
+const centre = withHf.find((e) => e.text === "Page 1 of 1")!.orig!.rect;
+assert.ok(Math.abs(centre.x + centre.w / 2 - 595 / 2) < 1, `centre ${centre.x + centre.w / 2}`);
+assert.equal(headerFooterEls({ ...hfCfg, skipFirst: true }, pages).length, 0, "only page is skipped");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");
