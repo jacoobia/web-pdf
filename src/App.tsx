@@ -86,7 +86,7 @@ export default function App() {
   };
   const drag = useRef<{
     x: number; y: number; touch: string; start: Map<string, { x: number; y: number }>;
-    page: number; box: Box; others: Box[];
+    page: number; box: Box; others: Box[]; toggle?: string;
   } | null>(null);
   const [guides, setGuides] = useState<(Guides & { page: number }) | null>(null);
   const marquee = useRef<{ page: number; x: number; y: number; base: string[]; boxes: (readonly [string, Box])[] } | null>(null);
@@ -349,9 +349,9 @@ export default function App() {
   const onElDown = (e: RPointerEvent, el: El) => {
     if (adding) return;
     e.stopPropagation();
-    const ids = e.shiftKey || e.ctrlKey || e.metaKey
-      ? sel.includes(el.id) ? sel.filter((i) => i !== el.id) : [...sel, el.id]
-      : sel.includes(el.id) ? sel : [el.id];
+    // Shift/Ctrl+click adds at once (so the group can be dragged); removing waits for a click without a drag.
+    const mod = e.shiftKey || e.ctrlKey || e.metaKey;
+    const ids = sel.includes(el.id) ? sel : mod ? [...sel, el.id] : [el.id];
     setSel(ids);
     const start = new Map(elsRef.current.filter((x) => ids.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
     const onPage = elsRef.current.filter((o) => o.page === el.page && !o.deleted);
@@ -364,7 +364,8 @@ export default function App() {
         }
       : boxOf(el);
     const others = onPage.filter((o) => !ids.includes(o.id)).map(boxOf);
-    drag.current = { x: e.clientX, y: e.clientY, touch: "drag:" + performance.now(), start, page: el.page, box, others };
+    const toggle = mod && sel.includes(el.id) ? el.id : undefined;
+    drag.current = { x: e.clientX, y: e.clientY, touch: "drag:" + performance.now(), start, page: el.page, box, others, toggle };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onElMove = (e: RPointerEvent) => {
@@ -372,19 +373,28 @@ export default function App() {
     if (!d) return;
     const rawX = (e.clientX - d.x) / scale, rawY = (e.clientY - d.y) / scale;
     if (Math.abs(rawX) + Math.abs(rawY) < 2 / scale && lastTouch.current !== d.touch) return;
-    const s = e.altKey
+    // Shift: free move. Ctrl: whole-point steps (alignment snapping would land on fractions). Otherwise snap.
+    const whole = e.ctrlKey || e.metaKey;
+    const s = e.shiftKey
       ? { dx: rawX, dy: rawY, guides: {} as Guides }
-      : snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w);
+      : whole
+        ? { dx: Math.round(rawX), dy: Math.round(rawY), guides: {} as Guides }
+        : snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w);
     setGuides({ page: d.page, ...s.guides });
-    // Snapped axes stay exact; free ones round to 0.1pt.
-    const r = (n: number, snapped?: number) => (snapped === undefined ? Math.round(n * 10) / 10 : n);
+    // Snapped and whole-step moves stay exact; free ones round to 0.1pt.
+    const r = (n: number, exact: boolean) => (exact ? n : Math.round(n * 10) / 10);
     patch(
       [...d.start.keys()],
-      (el) => ({ x: r(d.start.get(el.id)!.x + s.dx, s.guides.x), y: r(d.start.get(el.id)!.y + s.dy, s.guides.y) }),
+      (el) => ({
+        x: r(d.start.get(el.id)!.x + s.dx, whole || s.guides.x !== undefined),
+        y: r(d.start.get(el.id)!.y + s.dy, whole || s.guides.y !== undefined),
+      }),
       d.touch,
     );
   };
   const endDrag = () => {
+    const d = drag.current;
+    if (d?.toggle && lastTouch.current !== d.touch) setSel((s) => s.filter((i) => i !== d.toggle));
     drag.current = null;
     setGuides(null);
   };
@@ -579,9 +589,10 @@ export default function App() {
           <>
           {!selected.length && file && (
             <p className="muted">
-              Click text to select it, then drag to move. Drag across empty space to select a group, Shift or Ctrl+click
-              to add or remove, Ctrl+A to select everything; selected text moves together. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
-              Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
+              Click text or an image to select it, then drag to move. Drag across empty space to select a group,
+              Shift or Ctrl+click to add or remove, Ctrl+A to select everything; the selection moves together.
+              While dragging, things snap into line; hold Shift to move freely or Ctrl to move in whole points.
+              Double-click text to reword. Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
             </p>
           )}
 
