@@ -4,6 +4,7 @@ import {
   pickFace, renderPage,
   type El, type PageInfo,
 } from "./pdf";
+import { snap, type Box, type Guides } from "./snap";
 
 // Where the first baseline sits inside a CSS line box (line-height 1.2), as a fraction of font size.
 const CSS_BASELINE = 0.95;
@@ -64,7 +65,11 @@ export default function App() {
   const past = useRef<El[][]>([]);
   const lastTouch = useRef("");
   const images = useRef(new Map<number, { key: string; url: string }>());
-  const drag = useRef<{ x: number; y: number; touch: string; start: Map<string, { x: number; y: number }> } | null>(null);
+  const drag = useRef<{
+    x: number; y: number; touch: string; start: Map<string, { x: number; y: number }>;
+    page: number; box: Box; others: Box[];
+  } | null>(null);
+  const [guides, setGuides] = useState<(Guides & { page: number }) | null>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
 
   // `touch` groups rapid edits (typing, dragging) into one undo step.
@@ -255,16 +260,45 @@ export default function App() {
       : sel.includes(el.id) ? sel : [el.id];
     setSel(ids);
     const start = new Map(elsRef.current.filter((x) => ids.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
-    drag.current = { x: e.clientX, y: e.clientY, touch: "drag:" + performance.now(), start };
+    // Measured from what's on screen, since redrawn text's width depends on the browser's font rendering.
+    const boxOf = (x: El): Box => {
+      const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
+      const l = n ? n.offsetLeft / scale : x.x, t = n ? n.offsetTop / scale : x.y;
+      return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base: x.y + x.ascent * x.size };
+    };
+    const onPage = elsRef.current.filter((o) => o.page === el.page && !o.deleted);
+    const group = onPage.filter((o) => ids.includes(o.id)).map(boxOf);
+    const box = group.length
+      ? {
+          l: Math.min(...group.map((g) => g.l)), r: Math.max(...group.map((g) => g.r)),
+          t: Math.min(...group.map((g) => g.t)), b: Math.max(...group.map((g) => g.b)),
+          base: boxOf(el).base,
+        }
+      : boxOf(el);
+    const others = onPage.filter((o) => !ids.includes(o.id)).map(boxOf);
+    drag.current = { x: e.clientX, y: e.clientY, touch: "drag:" + performance.now(), start, page: el.page, box, others };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onElMove = (e: RPointerEvent) => {
     const d = drag.current;
     if (!d) return;
-    const dx = (e.clientX - d.x) / scale, dy = (e.clientY - d.y) / scale;
-    if (Math.abs(dx) + Math.abs(dy) < 2 / scale && lastTouch.current !== d.touch) return;
-    const r = (n: number) => Math.round(n * 10) / 10;
-    patch([...d.start.keys()], (el) => ({ x: r(d.start.get(el.id)!.x + dx), y: r(d.start.get(el.id)!.y + dy) }), d.touch);
+    const rawX = (e.clientX - d.x) / scale, rawY = (e.clientY - d.y) / scale;
+    if (Math.abs(rawX) + Math.abs(rawY) < 2 / scale && lastTouch.current !== d.touch) return;
+    const s = e.altKey
+      ? { dx: rawX, dy: rawY, guides: {} as Guides }
+      : snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w);
+    setGuides({ page: d.page, ...s.guides });
+    // Snapped axes stay exact; free ones round to 0.1pt.
+    const r = (n: number, snapped?: number) => (snapped === undefined ? Math.round(n * 10) / 10 : n);
+    patch(
+      [...d.start.keys()],
+      (el) => ({ x: r(d.start.get(el.id)!.x + s.dx, s.guides.x), y: r(d.start.get(el.id)!.y + s.dy, s.guides.y) }),
+      d.touch,
+    );
+  };
+  const endDrag = () => {
+    drag.current = null;
+    setGuides(null);
   };
 
   const onPageDown = (e: RPointerEvent, page: number) => {
@@ -347,6 +381,8 @@ export default function App() {
             onPointerDown={(e) => (e.stopPropagation(), onPageDown(e, p))}
           >
             {images.current.get(p) && <img src={images.current.get(p)!.url} alt="" draggable={false} />}
+            {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
+            {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
             {els.filter((el) => el.page === p && !el.deleted).map((el) => {
               const dirty = isDirty(el);
               const r = el.orig?.rect;
@@ -362,12 +398,13 @@ export default function App() {
               return (
                 <div
                   key={el.id}
+                  data-id={el.id}
                   className={`el ${dirty || !r ? "drawn" : "hit"} ${sel.includes(el.id) ? "sel" : ""}`}
                   style={box}
                   title={el.srcFont || undefined}
                   onPointerDown={(e) => onElDown(e, el)}
                   onPointerMove={onElMove}
-                  onPointerUp={() => (drag.current = null)}
+                  onPointerUp={endDrag}
                   onDoubleClick={() => (textBox.current?.focus(), textBox.current?.select())}
                 >
                   {dirty || !r ? el.text || "\u00a0" : null}
@@ -388,7 +425,7 @@ export default function App() {
 
         {!selected.length && file && (
           <p className="muted">
-            Click text to select it, then drag to move. Shift+click selects several. Double-click to reword.
+            Click text to select it, then drag to move. Shift+click selects several. Text snaps into line with other text; hold Alt to drag freely. Double-click to reword.
             Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
           </p>
         )}

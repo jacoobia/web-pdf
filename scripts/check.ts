@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
 import { extract, exportPdf, familyOf, fontKey, pickFace, renderPage, type El } from "../src/pdf";
+import { snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
 const src = await makeSample();
@@ -51,6 +52,16 @@ const calibriFaces = ["Calibri", "Calibri-Bold", "Calibri-Italic", "Calibri-Bold
 assert.equal(pickFace("Calibri", calibriFaces, true, false), "Calibri-Bold");
 assert.equal(pickFace("Calibri", calibriFaces, true, true), "Calibri-BoldItalic");
 assert.equal(pickFace("Calibri", ["Calibri"], true, false), "Calibri", "falls back to the only face");
+
+// snapping: left edges and baselines line up, far-off targets are ignored
+const box = { l: 10, r: 50, t: 100, b: 112, base: 110 };
+const other = { l: 40, r: 90, t: 196, b: 214, base: 210 };
+let s = snap(box, [other], 31, 98, 3, 595); // l 41 -> 40, base 208 -> 210
+assert.deepEqual([s.dx, s.dy, s.guides], [30, 100, { x: 40, y: 210 }]);
+s = snap(box, [other], 0, 0, 3, 595);
+assert.deepEqual([s.dx, s.dy, s.guides], [0, 0, { x: undefined, y: undefined }]);
+s = snap(box, [], 268, 0, 3, 595); // centre 298 -> page centre 297.5
+assert.equal(s.guides.x, 297.5);
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");
