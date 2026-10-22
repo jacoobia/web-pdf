@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
 import { extract, exportPdf, familyOf, fontKey, headerFooterEls, pickFace, renderPage, type El } from "../src/pdf";
-import { snap } from "../src/snap";
+import { confine, snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
 const src = await makeSample();
@@ -100,6 +100,12 @@ const mv = extract(src).els;
 Object.assign(imgs(mv)[0], { x: 100, y: 400 });
 const moved2 = imgs(extract((await exportPdf(src, mv, new Map())).pdf).els);
 assert.deepEqual(moved2.map((e) => [e.x, e.y].map(Math.round)), [[100, 400]], "moved image lands at the new spot");
+
+// margin: moves stop at the edge, an oversized box pins top-left
+const area = { l: 36, t: 36, r: 559, b: 806 };
+assert.deepEqual(confine(box, -100, 0, area), [26, 0], "left edge stops at 36");
+assert.deepEqual(confine(box, 600, 800, area), [509, 694], "right/bottom edges stop inside");
+assert.deepEqual(confine({ l: 0, r: 700, t: 50, b: 60, base: 0 }, 5, 0, area), [36, 0], "too wide pins left");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

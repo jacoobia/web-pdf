@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
   STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
-  isItalicName, pickFace, renderPage, type HeaderFooter,
+  isItalicName, LINE_HEIGHT, pickFace, renderPage, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
-import { snap, type Box, type Guides } from "./snap";
+import { confine, snap, type Area, type Box, type Guides } from "./snap";
 
 // Where the first baseline sits inside a CSS line box (line-height 1.2), as a fraction of font size.
 const CSS_BASELINE = 0.95;
@@ -68,6 +68,11 @@ export default function App() {
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
   const [side, setSide] = usePref("side", "right");
   const [tab, setTab] = usePref("tab", "edit");
+  const [marginOn, setMarginOn] = usePref("marginOn", "0");
+  const [marginPt, setMarginPt] = usePref("marginPt", "36");
+  const margin = marginOn === "1" ? Math.max(0, +marginPt || 0) : null;
+  const inside = (page: number): Area | null =>
+    margin === null ? null : { l: margin, t: margin, r: pages[page].w - margin, b: pages[page].h - margin };
   const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
   const [installed, setInstalled] = useState<LocalFont[]>([]);
   const [hf, setHf] = useState<HeaderFooter>({
@@ -330,7 +335,16 @@ export default function App() {
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (d) {
         e.preventDefault();
-        patch(sel, (el) => ({ x: el.x + d[0], y: el.y + d[1] }), "nudge:" + sel.join());
+        // Per page, so the margin stops the whole selection on that page together.
+        const moves = new Map<number, [number, number]>();
+        for (const p of new Set(selected.map((x) => x.page))) {
+          const area = inside(p);
+          const boxes = selected.filter((x) => x.page === p).map(boxOf);
+          const group = { l: Math.min(...boxes.map((b) => b.l)), t: Math.min(...boxes.map((b) => b.t)),
+            r: Math.max(...boxes.map((b) => b.r)), b: Math.max(...boxes.map((b) => b.b)), base: NaN };
+          moves.set(p, area ? confine(group, d[0], d[1], area) : [d[0], d[1]]);
+        }
+        patch(sel, (el) => ({ x: el.x + moves.get(el.page)![0], y: el.y + moves.get(el.page)![1] }), "nudge:" + sel.join());
       }
     };
     const onLeave = (e: BeforeUnloadEvent) => past.current.length && e.preventDefault();
@@ -382,14 +396,18 @@ export default function App() {
       : whole
         ? { dx: Math.round(rawX), dy: Math.round(rawY), guides: {} as Guides }
         : snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w);
-    setGuides({ page: d.page, ...s.guides });
-    // Snapped and whole-step moves stay exact; free ones round to 0.1pt.
+    const area = inside(d.page);
+    const [dx, dy] = area ? confine(d.box, s.dx, s.dy, area) : [s.dx, s.dy];
+    // A guide only means something if the margin didn't overrule it.
+    const guides = { x: dx === s.dx ? s.guides.x : undefined, y: dy === s.dy ? s.guides.y : undefined };
+    setGuides({ page: d.page, ...guides });
+    // Snapped, whole-step and margin-stopped moves stay exact; free ones round to 0.1pt.
     const r = (n: number, exact: boolean) => (exact ? n : Math.round(n * 10) / 10);
     patch(
       [...d.start.keys()],
       (el) => ({
-        x: r(d.start.get(el.id)!.x + s.dx, whole || s.guides.x !== undefined),
-        y: r(d.start.get(el.id)!.y + s.dy, whole || s.guides.y !== undefined),
+        x: r(d.start.get(el.id)!.x + dx, whole || guides.x !== undefined || dx !== s.dx),
+        y: r(d.start.get(el.id)!.y + dy, whole || guides.y !== undefined || dy !== s.dy),
       }),
       d.touch,
     );
@@ -415,10 +433,13 @@ export default function App() {
     e.preventDefault(); // otherwise the click's mousedown steals focus from the new text box
     const box = e.currentTarget.getBoundingClientRect();
     const last = elsRef.current.find((x) => x.id === sel[0]);
+    const size = last?.size ?? 11, area = inside(page);
+    const fit = (v: number, lo: number, hi: number) => (area ? Math.max(lo, Math.min(v, hi)) : v);
     const el: El = {
       id: "new-" + performance.now(), page, text: "",
-      x: Math.round((e.clientX - box.left) / scale), y: Math.round((e.clientY - box.top) / scale),
-      ascent: 0.8, size: last?.size ?? 11, color: last?.color ?? "#000000", font: last?.font ?? "Helvetica",
+      x: fit(Math.round((e.clientX - box.left) / scale), area?.l ?? 0, area?.r ?? 0),
+      y: fit(Math.round((e.clientY - box.top) / scale), area?.t ?? 0, (area?.b ?? 0) - size * LINE_HEIGHT),
+      ascent: 0.8, size, color: last?.color ?? "#000000", font: last?.font ?? "Helvetica",
       srcFont: "", bold: false, italic: false,
     };
     commit([...elsRef.current, el]);
@@ -525,6 +546,7 @@ export default function App() {
             onPointerUp={onPageUp}
           >
             {images.current.get(p) && <img src={images.current.get(p)!.url} alt="" draggable={false} />}
+            {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
             {band?.page === p && (
               <div
                 className="marquee"
@@ -753,6 +775,28 @@ export default function App() {
 
         {tab === "page" && (
           <>
+          {file && (
+            <section>
+              <h2>Margins</h2>
+              <label className="check">
+                <input type="checkbox" checked={marginOn === "1"} onChange={(e) => setMarginOn(e.target.checked ? "1" : "0")} />
+                Keep everything inside the margin
+              </label>
+              <div className="grid">
+                <label>
+                  Margin (pt)
+                  <input type="number" step="1" min="0" value={marginPt} onChange={(e) => setMarginPt(e.target.value)} />
+                </label>
+                <p className="muted fill">
+                  = {((+marginPt || 0) / 72).toFixed(2)} in, {(((+marginPt || 0) / 72) * 25.4).toFixed(1)} mm
+                </p>
+              </div>
+              <p className="muted">
+                Dragging, arrow keys and new text stop at the dashed line. Typing an exact X or Y still goes anywhere.
+              </p>
+            </section>
+          )}
+
           {file && (
             <section>
               <h2>Header &amp; footer</h2>

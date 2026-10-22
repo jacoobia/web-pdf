@@ -68,6 +68,7 @@ body { margin: 0; background: var(--bg); }
 .page img { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .marquee { position: absolute; z-index: 1; pointer-events: none; border: 1px solid var(--accent); background: rgb(47 95 208 / 0.12); }
+.margin-guide { position: absolute; pointer-events: none; border: 1px dashed rgb(229 57 155 / 0.6); }
 .guide { position: absolute; z-index: 1; pointer-events: none; background: #e5399b; }
 .guide.v { top: 0; bottom: 0; width: 1px; }
 .guide.h { left: 0; right: 0; height: 1px; }
@@ -104,7 +105,8 @@ input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--line); 
 .grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .grid .wide { grid-column: 1 / -1; }
 .grid.three { grid-template-columns: repeat(3, 1fr); }
-.grid .check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.grid .fill { align-self: end; padding-bottom: 8px; }
+.side .check, .grid .check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
 .el.hf { pointer-events: none; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 
