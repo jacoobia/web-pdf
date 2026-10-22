@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
-  STANDARD_FONTS, compact, exportPdf, extract, fontHelp, fontKey, isDirty, renderPage,
+  STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, isBoldName, isDirty, isItalicName,
+  pickFace, renderPage,
   type El, type PageInfo,
 } from "./pdf";
 
@@ -57,6 +58,7 @@ export default function App() {
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
   const [side, setSide] = usePref("side", "right");
+  const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -145,6 +147,17 @@ export default function App() {
   const sourceFonts = [...new Set(els.map((e) => e.srcFont).filter(Boolean))];
   const available = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)];
   const missing = sourceFonts.filter((s) => !available.some((k) => compact(k) === compact(s)));
+  const families = [...new Set(available.map(familyOf))];
+
+  const swapFonts = () => {
+    const keys = [...fonts.keys()];
+    commit(elsRef.current.map((e) => {
+      if (e.deleted || (swap.scope !== "all" && e.page !== +swap.scope)) return e;
+      // added text has no source style, so read weight/style off its current font
+      const bold = e.orig ? e.bold : isBoldName(e.font), italic = e.orig ? e.italic : isItalicName(e.font);
+      return { ...e, font: pickFace(swap.family, keys, bold, italic) };
+    }));
+  };
 
   // Chrome/Edge only: pull exact matches from fonts installed on this PC.
   // `auto` runs straight after opening a PDF; the browser may refuse without a click, so stay quiet on failure.
@@ -471,6 +484,34 @@ export default function App() {
             <p className="muted">
               Only text you change is redrawn. Untouched text keeps its original font. On Windows, installed fonts are
               in C:\Windows\Fonts.
+            </p>
+          </section>
+        )}
+
+        {file && (
+          <section>
+            <h2>Change font</h2>
+            <div className="grid">
+              <label>
+                Font
+                <select value={swap.family} onChange={(e) => setSwap({ ...swap, family: e.target.value })}>
+                  {families.map((f) => <option key={f}>{f}</option>)}
+                </select>
+              </label>
+              <label>
+                Apply to
+                <select value={swap.scope} onChange={(e) => setSwap({ ...swap, scope: e.target.value })}>
+                  <option value="all">All pages</option>
+                  {pages.map((_, i) => <option key={i} value={i}>Page {i + 1}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="row">
+              <button className="btn" onClick={swapFonts}>Change all text to {swap.family}</button>
+            </div>
+            <p className="muted">
+              Bold and italic are kept when the font has those styles. Load each style's file (e.g. Arial and Arial Bold)
+              for an exact match. All of that text gets redrawn; Ctrl+Z undoes it.
             </p>
           </section>
         )}

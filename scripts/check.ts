@@ -1,7 +1,7 @@
 // End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { extract, exportPdf, fontKey, renderPage, type El } from "../src/pdf";
+import { extract, exportPdf, familyOf, fontKey, pickFace, renderPage, type El } from "../src/pdf";
 import { makeSample, CALIBRI } from "./sample";
 
 const src = await makeSample();
@@ -41,6 +41,16 @@ const baseline = (e: El) => e.y + e.ascent * e.size;
 const before = find("Senior Widget Engineer at Acme Ltd");
 const moved = extract(pdf).els.find((e) => e.text.startsWith("Senior"))!;
 assert.ok(Math.abs(baseline(moved) - (before.orig!.y + before.ascent * before.size - 20)) < 0.5, `moved baseline ${baseline(moved)}`);
+
+// font swapping keeps weight and style
+assert.equal(familyOf("Arial-BoldMT"), "Arial");
+assert.equal(familyOf("Times-BoldItalic"), "Times");
+assert.equal(pickFace("Times", [], true, false), "Times-Bold");
+assert.equal(pickFace("Courier", [], false, true), "Courier-Oblique");
+const calibriFaces = ["Calibri", "Calibri-Bold", "Calibri-Italic", "Calibri-BoldItalic"];
+assert.equal(pickFace("Calibri", calibriFaces, true, false), "Calibri-Bold");
+assert.equal(pickFace("Calibri", calibriFaces, true, true), "Calibri-BoldItalic");
+assert.equal(pickFace("Calibri", ["Calibri"], true, false), "Calibri", "falls back to the only face");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

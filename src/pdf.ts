@@ -69,6 +69,19 @@ export function fontHelp(name: string): { family: string; googleUrl: string; alt
   };
 }
 
+export const isBoldName = (n: string) => /bold|black|heavy|semibold/i.test(n);
+export const isItalicName = (n: string) => /italic|oblique/i.test(n);
+
+/** "Times-BoldItalic" -> "Times", "Arial-BoldMT" -> "Arial" */
+export const familyOf = (key: string) => (STANDARD_FONTS[key] ? key.split("-")[0] : fontFamily(key));
+
+/** The face of `family` closest to the wanted weight and style, from built-ins or loaded `keys`. */
+export function pickFace(family: string, keys: string[], bold: boolean, italic: boolean): string {
+  if (["Helvetica", "Times", "Courier"].includes(family)) return fallbackFont(family, bold, italic);
+  const score = (k: string) => (isBoldName(k) === bold ? 2 : 0) + (isItalicName(k) === italic ? 1 : 0);
+  return keys.filter((k) => familyOf(k) === family).reduce((a, b) => (score(b) > score(a) ? b : a));
+}
+
 export function fallbackFont(name: string, bold: boolean, italic: boolean): string {
   const n = name.toLowerCase();
   // ponytail: name sniffing, mupdf's serif flag is unreliable (it calls Calibri serif)
@@ -139,8 +152,8 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
           flush();
         run ??= {
           name, size, color: col,
-          bold: font.isBold() || /bold|black|heavy|semibold/i.test(name),
-          italic: font.isItalic() || /italic|oblique/i.test(name),
+          bold: font.isBold() || isBoldName(name),
+          italic: font.isItalic() || isItalicName(name),
           chars: [],
         };
         run.chars.push({
