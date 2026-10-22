@@ -44,6 +44,8 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
   );
 }
 
+type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
+
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export default function App() {
@@ -60,6 +62,7 @@ export default function App() {
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
   const [side, setSide] = usePref("side", "right");
   const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
+  const [installed, setInstalled] = useState<LocalFont[]>([]);
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -153,22 +156,41 @@ export default function App() {
   const available = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)];
   const missing = sourceFonts.filter((s) => !available.some((k) => compact(k) === compact(s)));
   const families = [...new Set(available.map(familyOf))];
+  const installedFamilies = [...new Set(installed.map((f) => familyOf(f.postscriptName)))]
+    .filter((f) => !families.includes(f))
+    .sort();
 
-  const swapFonts = () => {
+  const loadInstalledList = async () => {
+    const list: LocalFont[] = await (window as any).queryLocalFonts();
+    setInstalled(list);
+    return list;
+  };
+
+  const swapFonts = async () => {
+    const targets = elsRef.current.filter((e) => !e.deleted && (swap.scope === "all" || e.page === +swap.scope));
+    // added text has no source style, so read weight/style off its current font
+    const style = (e: El) => [e.orig ? e.bold : isBoldName(e.font), e.orig ? e.italic : isItalicName(e.font)] as const;
     const keys = [...fonts.keys()];
-    commit(elsRef.current.map((e) => {
-      if (e.deleted || (swap.scope !== "all" && e.page !== +swap.scope)) return e;
-      // added text has no source style, so read weight/style off its current font
-      const bold = e.orig ? e.bold : isBoldName(e.font), italic = e.orig ? e.italic : isItalicName(e.font);
-      return { ...e, font: pickFace(swap.family, keys, bold, italic) };
-    }));
+    if (!families.includes(swap.family)) {
+      // Installed but not loaded: load only the faces this text needs.
+      const faces = installed.filter((f) => familyOf(f.postscriptName) === swap.family);
+      const names = faces.map((f) => f.postscriptName);
+      for (const name of new Set(targets.map((e) => pickFace(swap.family, names, ...style(e))))) {
+        const face = faces.find((f) => f.postscriptName === name)!;
+        const key = await addFont(new Uint8Array(await (await face.blob()).arrayBuffer()), name);
+        if (key) keys.push(key);
+      }
+      if (!keys.some((k) => familyOf(k) === swap.family)) return; // addFont has said why
+    }
+    const ids = new Set(targets.map((e) => e.id));
+    commit(elsRef.current.map((e) => (ids.has(e.id) ? { ...e, font: pickFace(swap.family, keys, ...style(e)) } : e)));
   };
 
   // Chrome/Edge only: pull exact matches from fonts installed on this PC.
   // `auto` runs straight after opening a PDF; the browser may refuse without a click, so stay quiet on failure.
   async function findInstalled(wanted: string[], auto = false) {
     try {
-      const local: { postscriptName: string; blob(): Promise<Blob> }[] = await (window as any).queryLocalFonts();
+      const local = await loadInstalledList();
       if (auto && !local.length) return;
       const found: string[] = [];
       for (const s of wanted) {
@@ -532,7 +554,14 @@ export default function App() {
               <label>
                 Font
                 <select value={swap.family} onChange={(e) => setSwap({ ...swap, family: e.target.value })}>
-                  {families.map((f) => <option key={f}>{f}</option>)}
+                  <optgroup label="Loaded and built-in">
+                    {families.map((f) => <option key={f}>{f}</option>)}
+                  </optgroup>
+                  {installedFamilies.length > 0 && (
+                    <optgroup label="Installed on this PC">
+                      {installedFamilies.map((f) => <option key={f}>{f}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </label>
               <label>
@@ -546,6 +575,18 @@ export default function App() {
             <div className="row">
               <button className="btn" onClick={swapFonts}>Change all text to {swap.family}</button>
             </div>
+            {"queryLocalFonts" in window && !installed.length && (
+              <button
+                className="link"
+                onClick={() =>
+                  loadInstalledList().catch((err) =>
+                    setReport({ ok: false, lines: [`Couldn't read installed fonts: ${(err as Error).message}`] }),
+                  )
+                }
+              >
+                Show fonts installed on this PC
+              </button>
+            )}
             <p className="muted">
               Bold and italic are kept when the font has those styles. Load each style's file (e.g. Arial and Arial Bold)
               for an exact match. All of that text gets redrawn; Ctrl+Z undoes it.
