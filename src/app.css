@@ -10,8 +10,26 @@
   --bad-soft: #fbeaea;
   --ok: #1d6b3a;
   --ok-soft: #e6f4ea;
+  --field: #ffffff;
+  color-scheme: light;
   font: 14px/1.45 system-ui, "Segoe UI", sans-serif;
   color: var(--text);
+}
+:root[data-theme="dark"] {
+  --bg: #17171b;
+  --panel: #222227;
+  --line: #3a3a42;
+  --text: #e8e8ec;
+  --muted: #a0a0ab;
+  --accent: #7ea2f0;
+  --accent-soft: #26324d;
+  --bad: #f2a29c;
+  --bad-soft: #43262a;
+  --ok: #8fd4a6;
+  --ok-soft: #1f3a2a;
+  --field: #2b2b31;
+  --on-accent: #10131c;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
@@ -33,7 +51,7 @@ body { margin: 0; background: var(--bg); }
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: 0.45; cursor: default; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
 .btn.on { background: var(--accent-soft); border-color: var(--accent); }
 .btn.danger { color: var(--bad); }
 .btn:focus-visible, .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -43,7 +61,7 @@ body { margin: 0; background: var(--bg); }
 .empty { margin: auto; text-align: center; font-size: 16px; }
 .warn { background: var(--bad-soft); color: var(--bad); padding: 8px 12px; border-radius: 6px; }
 
-.page { position: relative; flex: none; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.18); user-select: none; }
+.page { position: relative; flex: none; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.35); user-select: none; }
 .page.adding { cursor: crosshair; }
 .page img { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 
@@ -61,10 +79,10 @@ body { margin: 0; background: var(--bg); }
 .muted { color: var(--muted); font-size: 13px; }
 
 textarea, select, input[type="number"] {
-  width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text);
+  width: 100%; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--text);
 }
 textarea { resize: vertical; }
-input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: #fff; }
+input[type="color"] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px; padding: 2px; background: var(--field); }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .grid .wide { grid-column: 1 / -1; }

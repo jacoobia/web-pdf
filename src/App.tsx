@@ -26,6 +26,19 @@ export default function App() {
   const [adding, setAdding] = useState(false);
   const [report, setReport] = useState<{ ok: boolean; lines: string[] } | null>(null);
   const [, rerender] = useState(0);
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved) return saved;
+    } catch {}
+    return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {}
+  }, [theme]);
 
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
@@ -264,6 +277,9 @@ export default function App() {
           <button className="btn" onClick={() => setScale((s) => Math.min(4, s + 0.25))}>+</button>
         </span>
         <span className="grow">{file?.name}</span>
+        <button className="btn" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+          {theme === "dark" ? "Light mode" : "Dark mode"}
+        </button>
         <button className="btn primary" disabled={!file} onClick={save}>Save edited PDF</button>
       </header>
 
