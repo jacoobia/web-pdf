@@ -52,6 +52,17 @@ const calibriFaces = ["Calibri", "Calibri-Bold", "Calibri-Italic", "Calibri-Bold
 assert.equal(pickFace("Calibri", calibriFaces, true, false), "Calibri-Bold");
 assert.equal(pickFace("Calibri", calibriFaces, true, true), "Calibri-BoldItalic");
 assert.equal(pickFace("Calibri", ["Calibri"], true, false), "Calibri", "falls back to the only face");
+const arialFaces = ["Arial-Black", "ArialMT", "Arial-BoldMT", "Arial-ItalicMT"];
+assert.equal(pickFace("Arial", arialFaces, true, false), "Arial-BoldMT", "Bold, not Black");
+assert.equal(pickFace("Arial", arialFaces, false, false), "ArialMT");
+
+// Arial has no U+2010: drawn as a plain hyphen instead of a blank box
+const arial = await Bun.file("C:/Windows/Fonts/arial.ttf").bytes();
+const one = extract(src).els;
+Object.assign(one.find((e) => e.text === "Led a team of four.")!, { text: "Led 2019\u20102024", font: fontKey(arial) });
+const fixed = await exportPdf(src, one, new Map([[fontKey(arial), arial]]));
+assert.deepEqual(fixed.problems, []);
+assert.ok(extract(fixed.pdf).els.some((e) => e.text === "Led 2019-2024"));
 
 // snapping: left edges and baselines line up, far-off targets are ignored
 const box = { l: 10, r: 50, t: 100, b: 112, base: 110 };

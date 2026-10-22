@@ -78,7 +78,10 @@ export const familyOf = (key: string) => (STANDARD_FONTS[key] ? key.split("-")[0
 /** The face of `family` closest to the wanted weight and style, from built-ins or loaded `keys`. */
 export function pickFace(family: string, keys: string[], bold: boolean, italic: boolean): string {
   if (["Helvetica", "Times", "Courier"].includes(family)) return fallbackFont(family, bold, italic);
-  const score = (k: string) => (isBoldName(k) === bold ? 2 : 0) + (isItalicName(k) === italic ? 1 : 0);
+  // Plain "Bold" beats Black/Semibold, and faces with extra variants (Light, Narrow…) lose ties.
+  const score = (k: string) =>
+    (isBoldName(k) === bold ? 4 : 0) + (isItalicName(k) === italic ? 2 : 0) + (bold && /bold/i.test(k) ? 1 : 0) -
+    (/black|heavy|light|thin|narrow|condensed|semi|demi|medium|extra|ultra/i.test(k) ? 1 : 0);
   return keys.filter((k) => familyOf(k) === family).reduce((a, b) => (score(b) > score(a) ? b : a));
 }
 
@@ -205,12 +208,25 @@ export async function exportPdf(
 
   const out = await PDFDocument.load(cleaned);
   out.registerFontkit(fontkit);
-  const embedded = new Map<string, PDFFont>();
+  const embedded = new Map<string, { font: PDFFont; has: (ch: string) => boolean }>();
   const embed = async (key: string) => {
     if (!embedded.has(key)) {
       const file = fonts.get(key);
       if (!file && !STANDARD_FONTS[key]) throw new Error(`Font "${key}" isn't loaded.`);
-      embedded.set(key, await (file ? out.embedFont(file, { subset: true }) : out.embedFont(key)));
+      const font = await (file ? out.embedFont(file, { subset: true }) : out.embedFont(key));
+      // Loaded fonts silently draw a blank box for missing glyphs, so ask the font file itself.
+      const fk = file && fontkit.create(file);
+      const has = fk
+        ? (ch: string) => fk.hasGlyphForCodePoint(ch.codePointAt(0)!)
+        : (ch: string) => {
+            try {
+              font.encodeText(ch);
+              return true;
+            } catch {
+              return false;
+            }
+          };
+      embedded.set(key, { font, has });
     }
     return embedded.get(key)!;
   };
@@ -218,22 +234,15 @@ export async function exportPdf(
   const pages = out.getPages();
   for (const el of els) {
     if (!isDirty(el) || el.deleted) continue;
-    const font = await embed(el.font);
+    const { font, has } = await embed(el.font);
     const page = pages[el.page];
     const box = page.getCropBox();
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(el.color.slice(i, i + 2), 16) / 255);
     el.text.split("\n").forEach((raw, i) => {
       if (!raw.trim()) return;
-      // Built-in fonts only cover WinAnsi; these have an identical-looking plain "-" there.
-      const line = STANDARD_FONTS[el.font] ? raw.replace(HYPHENS, "-") : raw;
-      const bad = [...line].find((ch) => {
-        try {
-          font.encodeText(ch);
-          return false;
-        } catch {
-          return true;
-        }
-      });
+      // A font lacking a fancy hyphen gets the identical-looking plain one.
+      const line = [...raw].map((ch) => (!has(ch) && HYPHEN_CHARS.includes(ch) && has("-") ? "-" : ch)).join("");
+      const bad = [...line].find((ch) => !has(ch));
       if (bad)
         throw new Error(
           `${el.font} has no "${bad}" (U+${bad.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}), used in "${line}". ` +
@@ -253,7 +262,8 @@ export async function exportPdf(
 }
 
 // Hyphen, non-breaking hyphen, minus sign. Often the same glyph as "-", so they read back as "-".
-const HYPHENS = /[\u2010\u2011\u2212]/g;
+const HYPHEN_CHARS = "\u2010\u2011\u2212";
+const HYPHENS = new RegExp(`[${HYPHEN_CHARS}]`, "g");
 const norm = (s: string) => s.replace(HYPHENS, "-").replace(/\s+/g, " ").trim();
 
 /** Re-read the output: old text must be gone, new text must be extractable. */
