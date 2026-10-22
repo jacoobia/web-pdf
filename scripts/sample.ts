@@ -1,4 +1,5 @@
 // Builds a small CV-like PDF with a subset-embedded TTF, for scripts/check.ts.
+import * as mupdf from "mupdf";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
@@ -14,6 +15,10 @@ export async function makeSample(): Promise<Uint8Array> {
   page.drawText("Jane Example", { x: 40, y: 780, size: 24, font: bold });
   page.drawText("Senior Widget Engineer at Acme Ltd", { x: 40, y: 730, size: 12, font: sans });
   page.drawText("2019 - 2024", { x: 480, y: 730, size: 12, font: sans });
+  // a 60x30 image overlapping the dates, to prove image and text removal stay separate
+  const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 20, 10], false);
+  pix.clear(200);
+  page.drawImage(await doc.embedPng(pix.asPNG()), { x: 470, y: 720, width: 60, height: 30 });
   // tight 13pt leading at 12pt, to prove removing one line leaves its neighbours alone
   page.drawText("Built widgets for 5 years.", { x: 40, y: 712, size: 12, font: sans, color: rgb(0.3, 0.3, 0.3) });
   page.drawText("Led a team of four.", { x: 40, y: 699, size: 12, font: sans });

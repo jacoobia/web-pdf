@@ -22,6 +22,7 @@ export type El = Style & {
   deleted?: boolean;
   orig?: Style & { text: string; x: number; y: number; rect: Rect };
   align?: "left" | "center" | "right"; // which edge of the text sits at x
+  image?: { png: Uint8Array; w: number; h: number }; // set for images; text fields are unused then
 };
 
 export type PageInfo = { w: number; h: number; rotated: boolean };
@@ -176,7 +177,23 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
       }
       run = null;
     };
-    page.toStructuredText("preserve-whitespace").walk({
+    page.toStructuredText("preserve-whitespace,preserve-images").walk({
+      onImageBlock(bbox, _transform, image) {
+        const rect = { x: bbox[0], y: bbox[1], w: bbox[2] - bbox[0], h: bbox[3] - bbox[1] };
+        // ponytail: page-sized backgrounds would swallow every click, so they stay part of the page
+        if (rect.w * rect.h > 0.8 * (x1 - x0) * (y1 - y0) || !image.getColorSpace()) return;
+        let pix = image.toPixmap();
+        const n = pix.getColorSpace()?.getNumberOfComponents();
+        if (n !== 1 && n !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
+        const x = round(rect.x), y = round(rect.y);
+        const none = { font: "", size: 0, color: "" };
+        els.push({
+          id: `p${p}-${els.length}`, page: p, text: "", x, y, ascent: 0, ...none,
+          srcFont: "", bold: false, italic: false,
+          image: { png: pix.asPNG(), w: rect.w, h: rect.h },
+          orig: { ...none, text: "", x, y, rect },
+        });
+      },
       beginLine: flush,
       endLine: flush,
       onChar(c, origin, font, size, quad, color) {
@@ -201,29 +218,34 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
   return { pages, els };
 }
 
-function redact(page: mupdf.PDFPage, rects: Rect[]) {
+/** Text and images go in separate passes so removing one never touches the other. */
+function redact(page: mupdf.PDFPage, els: El[], images: boolean) {
+  const rects = els.filter((e) => e.orig && isDirty(e) && !!e.image === images).map((e) => e.orig!.rect);
   if (!rects.length) return;
   for (const r of rects) {
-    // Shrunk so glyphs on neighbouring lines that overlap the box edge survive.
-    const dy = r.h * 0.25;
-    page.createAnnotation("Redact").setRect([r.x + 0.5, r.y + dy, r.x + r.w - 0.5, r.y + r.h - dy]);
+    // Shrunk so glyphs on neighbouring lines (or images just touching) that overlap the edge survive.
+    const dx = images ? Math.min(1, r.w / 4) : 0.5, dy = images ? Math.min(1, r.h / 4) : r.h * 0.25;
+    page.createAnnotation("Redact").setRect([r.x + dx, r.y + dy, r.x + r.w - dx, r.y + r.h - dy]);
   }
   page.applyRedactions(
     false,
-    mupdf.PDFPage.REDACT_IMAGE_NONE,
+    images ? mupdf.PDFPage.REDACT_IMAGE_REMOVE : mupdf.PDFPage.REDACT_IMAGE_NONE,
     mupdf.PDFPage.REDACT_LINE_ART_NONE,
-    mupdf.PDFPage.REDACT_TEXT_REMOVE,
+    images ? mupdf.PDFPage.REDACT_TEXT_NONE : mupdf.PDFPage.REDACT_TEXT_REMOVE,
   );
 }
 
-const removedRects = (els: El[], page: number) =>
-  els.filter((e) => e.page === page && e.orig && isDirty(e)).map((e) => e.orig!.rect);
+function removeEdited(page: mupdf.PDFPage, index: number, els: El[]) {
+  const mine = els.filter((e) => e.page === index);
+  redact(page, mine, false);
+  redact(page, mine, true);
+}
 
 /** PNG of a page with the original text of edited/moved/deleted elements removed. */
 export function renderPage(bytes: Uint8Array, page: number, scale: number, els: El[]): Uint8Array {
   // ponytail: reopens the document per render, fine for CV-sized files; cache docs if big PDFs lag
   const p = open(bytes).loadPage(page);
-  redact(p, removedRects(els, page));
+  removeEdited(p, page, els);
   return p.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false).asPNG();
 }
 
@@ -233,7 +255,7 @@ export async function exportPdf(
   fonts: Map<string, Uint8Array>,
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
-  for (let p = 0; p < doc.countPages(); p++) redact(doc.loadPage(p), removedRects(els, p));
+  for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), p, els);
   // garbage collection drops the old content streams, so the removed text is gone from the file bytes too
   const cleaned = doc.saveToBuffer("garbage=compact,compress").asUint8Array();
 
@@ -265,9 +287,16 @@ export async function exportPdf(
   const pages = out.getPages();
   for (const el of els) {
     if (!isDirty(el) || el.deleted) continue;
-    const { font, has } = await embed(el.font);
     const page = pages[el.page];
     const box = page.getCropBox();
+    if (el.image) {
+      // ponytail: redrawn upright at its box size, so a rotated or skewed image comes back straight
+      page.drawImage(await out.embedPng(el.image.png), {
+        x: box.x + el.x, y: box.y + box.height - el.y - el.image.h, width: el.image.w, height: el.image.h,
+      });
+      continue;
+    }
+    const { font, has } = await embed(el.font);
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(el.color.slice(i, i + 2), 16) / 255);
     el.text.split("\n").forEach((raw, i) => {
       if (!raw.trim()) return;

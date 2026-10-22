@@ -10,7 +10,9 @@ const { pages, els } = extract(src);
 const find = (t: string) => els.find((e) => e.text === t) ?? assert.fail(`no element "${t}" in ${els.map((e) => e.text)}`);
 
 assert.equal(pages.length, 1);
-assert.equal(els.length, 6, "date on the same line should be its own element");
+assert.equal(els.filter((e) => !e.image).length, 6, "date on the same line should be its own element");
+const img = els.find((e) => e.image)!;
+assert.deepEqual([img.x, img.y, img.image!.w, img.image!.h].map(Math.round), [470, 92, 60, 30]);
 assert.equal(find("Jane Example").font, "Helvetica-Bold");
 assert.match(find("Led a team of four.").srcFont, /^Calibri/);
 assert.equal(find("Built widgets for 5 years.").color, "#4d4d4d");
@@ -85,6 +87,19 @@ assert.ok(Math.abs(right.x + right.w - (595 - 36)) < 1, `right edge ${right.x + 
 const centre = withHf.find((e) => e.text === "Page 1 of 1")!.orig!.rect;
 assert.ok(Math.abs(centre.x + centre.w / 2 - 595 / 2) < 1, `centre ${centre.x + centre.w / 2}`);
 assert.equal(headerFooterEls({ ...hfCfg, skipFirst: true }, pages).length, 0, "only page is skipped");
+
+// images: deleting one keeps the text under it; moving one redraws it there
+const imgs = (els: El[]) => els.filter((e) => e.image);
+assert.equal(imgs(extract(pdf).els).length, 1, "untouched image survives text edits");
+const del = extract(src).els;
+imgs(del)[0].deleted = true;
+const noImg = extract((await exportPdf(src, del, new Map())).pdf).els;
+assert.equal(imgs(noImg).length, 0, "deleted image is gone");
+assert.ok(noImg.some((e) => e.text === "2019 - 2024"), "text under the image survives");
+const mv = extract(src).els;
+Object.assign(imgs(mv)[0], { x: 100, y: 400 });
+const moved2 = imgs(extract((await exportPdf(src, mv, new Map())).pdf).els);
+assert.deepEqual(moved2.map((e) => [e.x, e.y].map(Math.round)), [[100, 400]], "moved image lands at the new spot");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

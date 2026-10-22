@@ -78,6 +78,12 @@ export default function App() {
   const past = useRef<El[][]>([]);
   const lastTouch = useRef("");
   const images = useRef(new Map<number, { key: string; url: string }>());
+  const pngUrls = useRef(new Map<Uint8Array, string>());
+  const pngUrl = (png: Uint8Array) => {
+    let url = pngUrls.current.get(png);
+    if (!url) pngUrls.current.set(png, (url = URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" }))));
+    return url;
+  };
   const drag = useRef<{
     x: number; y: number; touch: string; start: Map<string, { x: number; y: number }>;
     page: number; box: Box; others: Box[];
@@ -126,7 +132,9 @@ export default function App() {
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
       for (const img of images.current.values()) URL.revokeObjectURL(img.url);
+      for (const url of pngUrls.current.values()) URL.revokeObjectURL(url);
       images.current.clear();
+      pngUrls.current.clear();
       past.current = [];
       elsRef.current = list;
       setFile({ name: f.name, bytes, handle });
@@ -180,7 +188,7 @@ export default function App() {
   };
 
   const swapFonts = async () => {
-    const targets = elsRef.current.filter((e) => !e.deleted && (swap.scope === "all" || e.page === +swap.scope));
+    const targets = elsRef.current.filter((e) => !e.image && !e.deleted && (swap.scope === "all" || e.page === +swap.scope));
     // added text has no source style, so read weight/style off its current font
     const style = (e: El) => [e.orig ? e.bold : isBoldName(e.font), e.orig ? e.italic : isItalicName(e.font)] as const;
     const keys = [...fonts.keys()];
@@ -333,7 +341,9 @@ export default function App() {
   const boxOf = (x: El): Box => {
     const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
     const l = n ? n.offsetLeft / scale : x.x, t = n ? n.offsetTop / scale : x.y;
-    return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base: x.y + x.ascent * x.size };
+    // Images have no baseline; NaN never matches, so they snap by edges only.
+    const base = x.image ? NaN : x.y + x.ascent * x.size;
+    return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base };
   };
 
   const onElDown = (e: RPointerEvent, el: El) => {
@@ -433,7 +443,8 @@ export default function App() {
   // Selecting text brings its settings into view.
   useEffect(() => void (sel.length && setTab("edit")), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
-  const shared = <K extends keyof El>(k: K) => (selected.every((e) => e[k] === selected[0][k]) ? selected[0]?.[k] : undefined);
+  const selText = selected.filter((e) => !e.image), textIds = selText.map((e) => e.id);
+  const shared = <K extends keyof El>(k: K) => (selText.every((e) => e[k] === selText[0][k]) ? selText[0]?.[k] : undefined);
   const [font, size, color] = [shared("font"), shared("size"), shared("color")];
   const rotated = pages.some((p) => p.rotated);
 
@@ -510,17 +521,21 @@ export default function App() {
             )}
             {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
             {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
-            {els.filter((el) => el.page === p && !el.deleted).map((el) => {
+            {/* images first, so text drawn over them stays clickable */}
+            {els.filter((el) => el.page === p && !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map((el) => {
               const dirty = isDirty(el);
               const r = el.orig?.rect;
-              const box = dirty || !r
-                ? drawnStyle(el)
-                : { left: r.x * scale, top: r.y * scale, width: r.w * scale, height: r.h * scale };
+              const box = el.image && dirty
+                ? { left: el.x * scale, top: el.y * scale, width: el.image.w * scale, height: el.image.h * scale }
+                : dirty || !r
+                  ? drawnStyle(el)
+                  : { left: r.x * scale, top: r.y * scale, width: r.w * scale, height: r.h * scale };
+              const kind = el.image ? (dirty ? "img moved" : "img hit") : dirty || !r ? "drawn" : "hit";
               return (
                 <div
                   key={el.id}
                   data-id={el.id}
-                  className={`el ${dirty || !r ? "drawn" : "hit"} ${sel.includes(el.id) ? "sel" : ""}`}
+                  className={`el ${kind} ${sel.includes(el.id) ? "sel" : ""}`}
                   style={box}
                   title={el.srcFont || undefined}
                   onPointerDown={(e) => onElDown(e, el)}
@@ -528,7 +543,9 @@ export default function App() {
                   onPointerUp={endDrag}
                   onDoubleClick={() => (textBox.current?.focus(), textBox.current?.select())}
                 >
-                  {dirty || !r ? el.text || "\u00a0" : null}
+                  {el.image
+                    ? dirty && <img src={pngUrl(el.image.png)} alt="" draggable={false} />
+                    : dirty || !r ? el.text || "\u00a0" : null}
                 </div>
               );
             })}
@@ -570,8 +587,8 @@ export default function App() {
 
           {selected.length > 0 && (
             <section>
-              <h2>{one ? (one.orig ? "Text" : "New text") : `${selected.length} selected`}</h2>
-              {one && (
+              <h2>{one ? (one.image ? "Image" : one.orig ? "Text" : "New text") : `${selected.length} selected`}</h2>
+              {one && !one.image && (
                 <textarea
                   ref={textBox}
                   key={one.id}
@@ -583,22 +600,27 @@ export default function App() {
                 />
               )}
               <div className="grid">
-                <label className="wide">
-                  Font
-                  <select value={font ?? ""} onChange={(e) => patch(sel, { font: e.target.value })}>
-                    {font === undefined && <option value="">(mixed)</option>}
-                    {available.map((f) => <option key={f}>{f}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Size
-                  <input type="number" step="0.5" min="1" value={size ?? ""} placeholder="mixed"
-                    onChange={(e) => +e.target.value > 0 && patch(sel, { size: +e.target.value }, "size:" + sel)} />
-                </label>
-                <label>
-                  Colour
-                  <input type="color" value={color ?? "#000000"} onChange={(e) => patch(sel, { color: e.target.value }, "color:" + sel)} />
-                </label>
+                {textIds.length > 0 && (
+                  <>
+                    <label className="wide">
+                      Font
+                      <select value={font ?? ""} onChange={(e) => patch(textIds, { font: e.target.value })}>
+                        {font === undefined && <option value="">(mixed)</option>}
+                        {available.map((f) => <option key={f}>{f}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      Size
+                      <input type="number" step="0.5" min="1" value={size ?? ""} placeholder="mixed"
+                        onChange={(e) => +e.target.value > 0 && patch(textIds, { size: +e.target.value }, "size:" + textIds)} />
+                    </label>
+                    <label>
+                      Colour
+                      <input type="color" value={color ?? "#000000"}
+                        onChange={(e) => patch(textIds, { color: e.target.value }, "color:" + textIds)} />
+                    </label>
+                  </>
+                )}
                 {one && (["x", "y"] as const).map((k) => (
                   <label key={k}>
                     {k.toUpperCase()} (pt)
