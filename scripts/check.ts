@@ -1,7 +1,7 @@
 // End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { extract, exportPdf, familyOf, fontKey, headerFooterEls, pickFace, renderPage, type El } from "../src/pdf";
+import { extract, exportPdf, familyOf, fontKey, headerFooterEls, measure, pickFace, renderPage, wrapLines, type El } from "../src/pdf";
 import { confine, snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
@@ -106,6 +106,23 @@ const area = { l: 36, t: 36, r: 559, b: 806 };
 assert.deepEqual(confine(box, -100, 0, area), [26, 0], "left edge stops at 36");
 assert.deepEqual(confine(box, 600, 800, area), [509, 694], "right/bottom edges stop inside");
 assert.deepEqual(confine({ l: 0, r: 700, t: 50, b: 60, base: 0 }, 5, 0, area), [36, 0], "too wide pins left");
+
+// wrapping: word wrap, long words split, and the saved file breaks lines in the same places
+const mono = (t: string) => t.length * 10; // 10pt per character
+assert.deepEqual(wrapLines("aaa bbb ccc", 75, mono), ["aaa bbb", "ccc"]);
+assert.deepEqual(wrapLines("abcdefghij", 40, mono), ["abcd", "efgh", "ij"]);
+assert.deepEqual(wrapLines("one\ntwo", undefined, mono), ["one", "two"]);
+const helv = measure("Helvetica", new Map());
+assert.ok(Math.abs(helv("Hello", 10) - 22.78) < 0.01, `Helvetica width ${helv("Hello", 10)}`);
+const para = "Led a team that built and maintained seven services for vehicles";
+const wrapped = extract(src).els;
+Object.assign(wrapped.find((e) => e.text === "Cut costs by half.")!, { text: para, wrap: 150, lineHeight: 1.5 });
+const expectLines = wrapLines(para, 150, (t) => helv(t, 12));
+assert.ok(expectLines.length >= 3, `wrapped into ${expectLines.length}`);
+const outEls = extract((await exportPdf(src, wrapped, new Map())).pdf).els.filter((e) => e.y > 140 && e.y < 230 && !e.image);
+assert.deepEqual(outEls.map((e) => e.text), expectLines, "file breaks lines like the preview");
+const bases = outEls.map((e) => e.y + e.ascent * e.size);
+assert.ok(Math.abs(bases[1] - bases[0] - 18) < 0.3, `line spacing ${bases[1] - bases[0]}`);
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

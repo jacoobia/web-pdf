@@ -2,7 +2,7 @@
 // MuPDF reads text (with fonts), renders pages and truly removes old text (redaction).
 // pdf-lib writes the new text with embedded fonts so it stays selectable for ATS parsers.
 import * as mupdf from "mupdf";
-import { PDFDocument, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFontEmbedder, rgb, type PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -23,6 +23,8 @@ export type El = Style & {
   orig?: Style & { text: string; x: number; y: number; rect: Rect };
   align?: "left" | "center" | "right"; // which edge of the text sits at x
   image?: { png: Uint8Array; w: number; h: number }; // set for images; text fields are unused then
+  wrap?: number; // box width in points; text wraps to it. Unset = one line per line break
+  lineHeight?: number; // line spacing as a multiple of size, default LINE_HEIGHT
 };
 
 export type PageInfo = { w: number; h: number; rotated: boolean };
@@ -99,6 +101,57 @@ export function fallbackFont(name: string, bold: boolean, italic: boolean): stri
   return bold || italic ? `${fam}-${bold ? "Bold" : ""}${italic ? "Oblique" : ""}` : fam;
 }
 
+const measurers = new Map<string, (text: string, size: number) => number>();
+
+/** Text width in points, measured the way pdf-lib will draw it, so preview and file wrap identically. */
+export function measure(font: string, fonts: Map<string, Uint8Array>): (text: string, size: number) => number {
+  const file = fonts.get(font);
+  // ponytail: cached by font name; reloading a different file under the same name keeps the first metrics
+  let m = measurers.get(font);
+  if (!m && file) {
+    const fk = fontkit.create(file);
+    m = (t, s) => (fk.layout(t).glyphs.reduce((w, g) => w + g.advanceWidth, 0) * s) / fk.unitsPerEm;
+  } else if (!m && STANDARD_FONTS[font]) {
+    const std = StandardFontEmbedder.for(font as Parameters<typeof StandardFontEmbedder.for>[0]);
+    m = (t, s) => {
+      try {
+        return std.widthOfTextAtSize(t.replace(HYPHENS, "-"), s);
+      } catch {
+        return t.length * s * 0.5; // a character it can't draw; saving reports it properly
+      }
+    };
+  }
+  if (!m) return (t, s) => t.length * s * 0.5;
+  measurers.set(font, m);
+  return m;
+}
+
+/** Word-wrap to `width` points (no width: just the line breaks). Words longer than a line get split. */
+export function wrapLines(text: string, width: number | undefined, w: (t: string) => number): string[] {
+  if (!width) return text.split("\n");
+  const out: string[] = [];
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const word of para.split(" ")) {
+      const next = line ? `${line} ${word}` : word;
+      if (w(next) <= width) {
+        line = next;
+        continue;
+      }
+      if (line) out.push(line);
+      line = word;
+      while (line.length > 1 && w(line) > width) {
+        let n = line.length - 1;
+        while (n > 1 && w(line.slice(0, n)) > width) n--;
+        out.push(line.slice(0, n));
+        line = line.slice(n);
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
 export type HeaderFooter = Style & {
   header: string[]; // left, centre, right
   footer: string[];
@@ -133,7 +186,8 @@ export function isDirty(el: El): boolean {
   const o = el.orig;
   return (
     !o || !!el.deleted || el.text !== o.text || el.x !== o.x || el.y !== o.y ||
-    el.size !== o.size || el.color !== o.color || el.font !== o.font
+    el.size !== o.size || el.color !== o.color || el.font !== o.font ||
+    el.wrap !== undefined || el.lineHeight !== undefined
   );
 }
 
@@ -298,7 +352,9 @@ export async function exportPdf(
     }
     const { font, has } = await embed(el.font);
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(el.color.slice(i, i + 2), 16) / 255);
-    el.text.split("\n").forEach((raw, i) => {
+    const lh = el.lineHeight ?? LINE_HEIGHT;
+    const width = measure(el.font, fonts);
+    wrapLines(el.text, el.wrap, (t) => width(t, el.size)).forEach((raw, i) => {
       if (!raw.trim()) return;
       // A font lacking a fancy hyphen gets the identical-looking plain one.
       const line = [...raw].map((ch) => (!has(ch) && HYPHEN_CHARS.includes(ch) && has("-") ? "-" : ch)).join("");
@@ -311,7 +367,7 @@ export async function exportPdf(
       const w = el.align && el.align !== "left" ? font.widthOfTextAtSize(line, el.size) : 0;
       page.drawText(line, {
         x: box.x + el.x - (el.align === "center" ? w / 2 : w),
-        y: box.y + box.height - el.y - el.ascent * el.size - i * el.size * LINE_HEIGHT,
+        y: box.y + box.height - el.y - el.ascent * el.size - i * el.size * lh,
         size: el.size,
         font,
         color: rgb(r, g, b),

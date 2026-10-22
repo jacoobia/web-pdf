@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import {
   STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
-  isItalicName, LINE_HEIGHT, pickFace, renderPage, type HeaderFooter,
+  isItalicName, LINE_HEIGHT, measure, pickFace, renderPage, wrapLines, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
 
-// Where the first baseline sits inside a CSS line box (line-height 1.2), as a fraction of font size.
-const CSS_BASELINE = 0.95;
+// Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
+const cssBaseline = (lineHeight: number) => 0.35 + lineHeight / 2;
 
 const cssFont = (key: string) => {
   const std = STANDARD_FONTS[key];
@@ -84,6 +84,7 @@ export default function App() {
   const lastTouch = useRef("");
   const images = useRef(new Map<number, { key: string; url: string }>());
   const pngUrls = useRef(new Map<Uint8Array, string>());
+  const resizing = useRef("");
   const pngUrl = (png: Uint8Array) => {
     let url = pngUrls.current.get(png);
     if (!url) pngUrls.current.set(png, (url = URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" }))));
@@ -361,7 +362,33 @@ export default function App() {
   };
   const duplicate = () => addCopies(selected, 10, 10);
   const selectAll = () => setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
-  const resetSel = () => patch(sel, (e) => (e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false } : {}));
+  const resetSel = () =>
+    patch(sel, (e) =>
+      e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false, wrap: undefined, lineHeight: undefined } : {},
+    );
+  /** Join selected lines into one wrapping text box, in reading order, keeping their line spacing. */
+  const mergeSel = () => {
+    const base = (e: El) => e.y + e.ascent * e.size;
+    const page = selected.find((e) => !e.image)?.page;
+    const texts = selected
+      .filter((e) => !e.image && e.page === page)
+      .sort((a, b) => (Math.abs(base(a) - base(b)) > 2 ? base(a) - base(b) : a.x - b.x));
+    if (texts.length < 2) return;
+    const lines: number[] = [];
+    for (const t of texts) if (!lines.length || base(t) - lines.at(-1)! > 2) lines.push(base(t));
+    const [first, ...rest] = texts;
+    const left = Math.min(...texts.map((e) => e.x)), right = Math.max(...texts.map((e) => boxOf(e).r));
+    const drop = new Set(rest.map((e) => e.id));
+    commit(elsRef.current.flatMap((e) =>
+      e.id === first.id
+        ? [{
+            ...e, x: left, text: texts.map((t) => t.text.trim()).join(" "), wrap: Math.ceil(right - left) + 2,
+            lineHeight: lines.length > 1 ? (lines[1] - lines[0]) / first.size : undefined,
+          }]
+        : drop.has(e.id) ? (e.orig ? [{ ...e, deleted: true }] : []) : [e],
+    ));
+    setSel([first.id]);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -533,9 +560,14 @@ export default function App() {
   };
 
   const hfEls = headerFooterEls(hf, pages);
+  // Same wrapping code and font metrics as the saved file, so the preview breaks lines where the PDF will.
+  const shownText = (el: El) =>
+    el.wrap ? wrapLines(el.text, el.wrap, (t) => measure(el.font, fonts)(t, el.size)).join("\n") : el.text;
   const drawnStyle = (el: El) => ({
     left: el.x * scale,
-    top: (el.y + (el.ascent - CSS_BASELINE) * el.size) * scale,
+    top: (el.y + (el.ascent - cssBaseline(el.lineHeight ?? LINE_HEIGHT)) * el.size) * scale,
+    width: el.wrap ? el.wrap * scale : undefined,
+    lineHeight: el.lineHeight ?? LINE_HEIGHT,
     fontSize: el.size * scale,
     color: el.color,
     transform: el.align === "center" ? "translateX(-50%)" : el.align === "right" ? "translateX(-100%)" : undefined,
@@ -656,7 +688,28 @@ export default function App() {
                 >
                   {el.image
                     ? dirty && <img src={pngUrl(el.image.png)} alt="" draggable={false} />
-                    : dirty || !r ? el.text || "\u00a0" : null}
+                    : dirty || !r ? shownText(el) || "\u00a0" : null}
+                  {one?.id === el.id && !el.image && (
+                    <span
+                      className="resize"
+                      title="Drag to set the width so text wraps. Double-click for automatic width."
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (e.button !== 0) return;
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        resizing.current = "wrap:" + performance.now();
+                      }}
+                      onPointerMove={(e) => {
+                        if (!resizing.current) return;
+                        const page = e.currentTarget.closest(".page")!.getBoundingClientRect();
+                        const area = inside(el.page);
+                        const right = Math.min((e.clientX - page.left) / scale, area?.r ?? Infinity);
+                        patch([el.id], { wrap: Math.max(el.size * 2, Math.round(right - el.x)) }, resizing.current);
+                      }}
+                      onPointerUp={() => (resizing.current = "")}
+                      onDoubleClick={(e) => (e.stopPropagation(), patch([el.id], { wrap: undefined }))}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -682,6 +735,7 @@ export default function App() {
           ["Duplicate", "Ctrl+D", duplicate, has],
           ["Delete", "Del", () => remove(sel), has],
           null,
+          ["Merge into one text box", "", mergeSel, selected.filter((e) => !e.image).length > 1],
           ["Reset to original", "", resetSel, selected.some((e) => e.orig && isDirty(e))],
           ["Select all", "Ctrl+A", selectAll, true],
           ["Add text here", "", () => addTextAt(at), true],
@@ -749,6 +803,8 @@ export default function App() {
               While dragging, things snap into line; hold Shift to move freely or Ctrl to move in whole points.
               Double-click text to reword. Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
               Ctrl+C, X and V copy, cut and paste; Ctrl+D duplicates. Right-click for all of these.
+              Drag the handle on a selected text's right edge to make it wrap; merge several lines into one box to
+              reflow a paragraph.
             </p>
           )}
 
@@ -788,6 +844,20 @@ export default function App() {
                     </label>
                   </>
                 )}
+                {one && !one.image && (
+                  <>
+                    <label>
+                      Width (pt)
+                      <input type="number" step="1" min="1" value={one.wrap ?? ""} placeholder="Auto"
+                        onChange={(e) => patch([one.id], { wrap: e.target.value === "" ? undefined : Math.max(1, +e.target.value) }, "wrap:" + one.id)} />
+                    </label>
+                    <label>
+                      Line spacing
+                      <input type="number" step="0.05" min="0.5" value={Math.round((one.lineHeight ?? LINE_HEIGHT) * 100) / 100}
+                        onChange={(e) => +e.target.value > 0 && patch([one.id], { lineHeight: +e.target.value }, "lh:" + one.id)} />
+                    </label>
+                  </>
+                )}
                 {one && (["x", "y"] as const).map((k) => (
                   <label key={k}>
                     {k.toUpperCase()} (pt)
@@ -799,10 +869,9 @@ export default function App() {
               {one?.srcFont && <FontNote el={one} loaded={!missing.includes(one.srcFont)}
                 onUseForAll={() => commit(fontForSource(elsRef.current, one.srcFont, one.font))} />}
               <div className="row">
+                {selText.length > 1 && <button className="btn" onClick={mergeSel}>Merge into one text box</button>}
                 {selected.some((e) => e.orig && isDirty(e)) && (
-                  <button className="btn" onClick={() => patch(sel, (e) => (e.orig ? { ...e.orig, deleted: false } : {}))}>
-                    Reset to original
-                  </button>
+                  <button className="btn" onClick={resetSel}>Reset to original</button>
                 )}
                 <button className="btn danger" onClick={() => remove(sel)}>Delete</button>
               </div>
