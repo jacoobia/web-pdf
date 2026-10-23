@@ -1,6 +1,6 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/header-dark.png">
-  <img alt="Web PDF" src="docs/images/header-light.png">
+  <img alt="Web PDF" src="docs/images/header-light.png" width="840">
 </picture>
 
 A PDF editor that runs in your browser. Files are edited locally and never uploaded.
