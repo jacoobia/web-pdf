@@ -1343,7 +1343,7 @@ export default function App() {
       {canvasStyle ? (
         <header className="header slim">
           <div className="doc">
-            <span className="brand">Quick PDF</span>
+            <span className="brand">Web PDF</span>
             {file && (
               <>
                 <span className="vsep" />
@@ -1387,7 +1387,7 @@ export default function App() {
       ) : (
         <header className="header">
           <div className="doc">
-            <span className="brand">Quick PDF</span>
+            <span className="brand">Web PDF</span>
             {file && (
               <>
                 <span className="vsep" />
