@@ -633,6 +633,20 @@ export default function App() {
 
   // Which page is at the top of the view, for the thumbnail rail.
   const pagesRef = useRef<HTMLElement>(null);
+  // Floating panels sit over the scrolling canvas; tell CSS how much room its scrollbars take so they stay clear.
+  useEffect(() => {
+    const m = pagesRef.current;
+    if (!m) return;
+    const measure = () => {
+      m.parentElement!.style.setProperty("--scrollbar-w", `${m.offsetWidth - m.clientWidth}px`);
+      m.parentElement!.style.setProperty("--scrollbar-h", `${m.offsetHeight - m.clientHeight}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(m);
+    for (const child of m.children) ro.observe(child); // content growing past the edge adds a scrollbar
+    return () => ro.disconnect();
+  }, [file, pages, scale, uiStyle]);
   const [currentPage, setCurrentPage] = useState(0);
   const onPagesScroll = (e: UIEvent<HTMLElement>) => {
     const m = e.currentTarget, line = m.scrollTop + m.clientHeight / 3;

@@ -174,7 +174,8 @@ kbd { font: 500 11px/1 "IBM Plex Sans", system-ui, sans-serif; padding: 2px 5px;
 .thumb.on { color: var(--text); font-weight: 500; }
 .thumb-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .zoom-float {
-  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px;
+  position: absolute; left: calc(50% - var(--scrollbar-w, 0px) / 2); bottom: calc(16px + var(--scrollbar-h, 0px));
+  transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--float);
 }
 .zoom-float .tool:hover:not(:disabled) { background: var(--surface-2); }
@@ -186,7 +187,8 @@ kbd { font: 500 11px/1 "IBM Plex Sans", system-ui, sans-serif; padding: 2px 5px;
 }
 .side-left .side { border-left: 0; border-right: 1px solid var(--border); }
 .side.floating {
-  position: absolute; top: 12px; right: 12px; width: 312px; max-height: calc(100% - 24px);
+  position: absolute; top: 12px; right: calc(12px + var(--scrollbar-w, 0px)); width: 312px;
+  max-height: calc(100% - 24px - var(--scrollbar-h, 0px));
   border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--float);
 }
 .side-left .side.floating { right: auto; left: 12px; border-right: 1px solid var(--border); }
