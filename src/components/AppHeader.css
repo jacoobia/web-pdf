@@ -1,0 +1,134 @@
+.header {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 12px 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.header .doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.header .tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header .end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.header.slim {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  padding: 0 10px 0 16px;
+}
+.header.slim .end {
+  justify-self: end;
+}
+.brand {
+  font-weight: 600;
+  font-size: var(--text-lg);
+  white-space: nowrap;
+}
+.vsep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  flex: none;
+}
+.doc-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zoom-level {
+  min-width: 48px;
+  text-align: center;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.file-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 280px;
+  padding: 4px 6px 4px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+.file-menu span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-menu:hover,
+.file-menu[aria-expanded="true"] {
+  background: var(--surface-2);
+}
+.file-menu svg {
+  color: var(--muted);
+  flex: none;
+}
+.file-menu-list {
+  top: 42px;
+  left: 120px;
+  width: 200px;
+}
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .header,
+  .header.slim {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 6px var(--gutter);
+    padding-top: calc(6px + env(safe-area-inset-top, 0px));
+  }
+  .header .doc {
+    flex: 1;
+  }
+  .header .tools {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .header .end {
+    gap: 4px;
+  }
+  .header .vsep,
+  .header .badge,
+  .desktop-only {
+    display: none;
+  }
+  .mobile-only {
+    display: inline-grid;
+  }
+  .file-menu-list {
+    left: var(--gutter);
+    top: 48px;
+  }
+}
+@media (max-width: 400px) {
+  .has-file .brand {
+    display: none;
+  }
+}

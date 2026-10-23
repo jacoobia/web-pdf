@@ -1,0 +1,51 @@
+.swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.swatch::after {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+.swatch[aria-checked="true"] {
+  border-color: var(--text);
+}
+.swatch.custom {
+  border: 1px dashed var(--border);
+  color: var(--muted);
+}
+.swatch.custom::after {
+  display: none;
+}
+.swatch.custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .swatch {
+    width: 40px;
+    height: 40px;
+  }
+  .swatch::after {
+    width: 30px;
+    height: 30px;
+  }
+}

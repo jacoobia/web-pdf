@@ -1,0 +1,136 @@
+.start {
+  margin: 88px auto auto;
+  width: min(480px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.start-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.start h1 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+.start-intro p {
+  color: var(--muted);
+}
+.drop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--muted);
+}
+.drop span {
+  flex: 1;
+}
+.recent h2 {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.recent ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recent li {
+  position: relative;
+}
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 44px 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 100ms,
+    transform 80ms;
+}
+.recent-row svg {
+  color: var(--muted);
+  flex: none;
+}
+.recent li:hover .recent-row {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.recent li .recent-row:active {
+  transform: scale(0.985);
+  background: var(--accent-tint);
+}
+.recent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.recent-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-date {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.recent-x {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.recent li:hover .recent-x,
+.recent-x:focus-visible {
+  opacity: 1;
+}
+.recent-x:hover {
+  color: var(--danger);
+  background: var(--surface);
+}
+@media (pointer: coarse) {
+  .recent-x {
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .start {
+    margin-top: 32px;
+    gap: 20px;
+  }
+  .drop {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+  .drop svg {
+    align-self: center;
+  }
+}

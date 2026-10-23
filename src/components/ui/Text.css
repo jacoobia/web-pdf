@@ -1,0 +1,76 @@
+.muted {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.kbd {
+  font:
+    500 11px / 1 "IBM Plex Sans",
+    system-ui,
+    sans-serif;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+.tag {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+.tag.ok {
+  color: var(--muted);
+}
+.tag.ok::before {
+  content: "✓ ";
+  color: var(--ok);
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.list.muted {
+  font-size: inherit;
+}
+.callout {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+}
+.callout.danger {
+  color: var(--danger);
+}

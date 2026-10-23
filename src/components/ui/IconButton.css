@@ -1,0 +1,26 @@
+.tool {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 100ms;
+}
+.tool:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.tool.on {
+  background: var(--accent-tint);
+  color: var(--accent-fg);
+}
+.tool:disabled {
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: default;
+}

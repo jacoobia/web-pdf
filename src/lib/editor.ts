@@ -1,0 +1,848 @@
+import {
+  type PointerEvent,
+  type MouseEvent as RMouseEvent,
+  type UIEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalFont, PDF_TYPE } from "./browser";
+import {
+  compact,
+  type El,
+  familyOf,
+  fontKey,
+  type HeaderFooter,
+  headerFooterEls,
+  isBoldName,
+  isDirty,
+  isItalicName,
+  LINE_HEIGHT,
+  type PageInfo,
+  pickFace,
+  STANDARD_FONTS,
+} from "./pdf";
+import { usePref, usePrefs } from "./prefs";
+import { usePreviews } from "./previews";
+import { openedAt, type Recent, useRecent } from "./recent";
+import { type Area, type Box, confine, type Guides, snap } from "./snap";
+
+export type At = { page: number; x: number; y: number };
+export type Report = { ok: boolean; lines: string[]; busy?: boolean };
+export type Tab = "edit" | "fonts" | "page";
+export type Band = { page: number; l: number; r: number; t: number; b: number };
+export type MenuAt = At & { left: number; top: number };
+
+export type ElHandlers = {
+  down(e: PointerEvent, el: El): void;
+  move(e: PointerEvent): void;
+  up(): void;
+  focusText(): void;
+  focus(el: El): void;
+  resizeStart(e: PointerEvent): void;
+  resizeMove(e: PointerEvent, el: El): void;
+  resizeEnd(): void;
+  unwrap(id: string): void;
+};
+
+export type PageHandlers = {
+  down(e: PointerEvent<HTMLDivElement>, page: number): void;
+  move(e: PointerEvent<HTMLDivElement>): void;
+  up(): void;
+  menu(e: RMouseEvent<HTMLDivElement>, page: number): void;
+};
+
+const NARROW = "(max-width: 760px)";
+const clampScale = (s: number) => Math.max(0.5, Math.min(4, s));
+
+const groupByPage = (list: El[]) => {
+  const m = new Map<number, El[]>();
+  for (const e of list) (m.get(e.page) ?? m.set(e.page, []).get(e.page)!).push(e);
+  return m;
+};
+
+const fontForSource = (list: El[], src: string, key: string) =>
+  list.map((e) =>
+    e.srcFont && compact(e.srcFont) === compact(src)
+      ? { ...e, font: key, orig: e.orig && !isDirty(e) ? { ...e.orig, font: key } : e.orig }
+      : e,
+  );
+
+const newText = (fields: Pick<El, "page" | "text" | "x" | "y" | "size" | "color" | "font">): El => ({
+  id: `new-${crypto.randomUUID()}`,
+  ascent: 0.8,
+  srcFont: "",
+  bold: false,
+  italic: false,
+  ...fields,
+});
+
+export function useEditor() {
+  const { prefs, setPref, resetPrefs, theme, margin } = usePrefs();
+  const { recent, remember, forget, load } = useRecent();
+  const [file, setFile] = useState<{ name: string; handle?: FileSystemFileHandle } | null>(null);
+  const [pages, setPages] = useState<PageInfo[]>([]);
+  const [els, setEls] = useState<El[]>([]);
+  const [sel, setSel] = useState<string[]>([]);
+  const [fonts, setFonts] = useState(new Map<string, Uint8Array>());
+  const [scale, setScale] = useState(1.5);
+  const [adding, setAdding] = useState(false);
+  const [report, setReport] = useState<Report | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(() => !matchMedia(NARROW).matches);
+  const [fileMenu, setFileMenu] = useState(false);
+  const [tab, setTab] = usePref("tab", "edit") as unknown as [Tab, (t: Tab) => void];
+  const [swap, setSwap] = useState({ family: "Helvetica", scope: "all" });
+  const [installed, setInstalled] = useState<LocalFont[]>([]);
+  const [hf, setHf] = useState<HeaderFooter>({
+    header: ["", "", ""],
+    footer: ["", "", ""],
+    font: "Helvetica",
+    size: 9,
+    color: "#555555",
+    margin: 36,
+    skipFirst: false,
+  });
+  const [guides, setGuides] = useState<(Guides & { page: number }) | null>(null);
+  const [menu, setMenu] = useState<MenuAt | null>(null);
+  const [band, setBand] = useState<Band | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+
+  const pdfInput = useRef<HTMLInputElement>(null);
+  const pagesRef = useRef<HTMLElement>(null);
+  const textBox = useRef<HTMLTextAreaElement>(null);
+  const elsRef = useRef<El[]>([]);
+  const pageArrays = useRef(new Map<number, El[]>());
+  const past = useRef<El[][]>([]);
+  const future = useRef<El[][]>([]);
+  const lastTouch = useRef("");
+  const resizing = useRef("");
+  const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
+  const pasteTimer = useRef(0);
+  const saved = useRef<{ els: El[]; hf: HeaderFooter | null }>({ els: [], hf: null });
+  const drag = useRef<{
+    x: number;
+    y: number;
+    touch: string;
+    start: Map<string, { x: number; y: number }>;
+    page: number;
+    box: Box;
+    others: Box[];
+    toggle?: string;
+  } | null>(null);
+  const marquee = useRef<{
+    page: number;
+    x: number;
+    y: number;
+    base: string[];
+    boxes: (readonly [string, Box])[];
+  } | null>(null);
+
+  const byPage = useMemo(() => {
+    const m = groupByPage(els);
+    for (const [p, list] of m) {
+      const old = pageArrays.current.get(p);
+      if (old && old.length === list.length && old.every((e, i) => e === list[i])) m.set(p, old);
+    }
+    pageArrays.current = m;
+    return m;
+  }, [els]);
+  const elById = useMemo(() => new Map(els.map((e) => [e.id, e])), [els]);
+  const hfEls = useMemo(() => headerFooterEls(hf, pages), [hf, pages]);
+  const hfByPage = useMemo(() => groupByPage(hfEls), [hfEls]);
+  const editedPages = useMemo(() => new Set(els.filter(isDirty).map((e) => e.page)), [els]);
+  const sourceFonts = useMemo(() => [...new Set(els.map((e) => e.srcFont).filter(Boolean))], [els]);
+
+  const canvasStyle = prefs.uiStyle === "canvas";
+  const previews = usePreviews({ open: !!file, pages, byPage, scale, thumbs: canvasStyle });
+
+  const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
+  const one = selected.length === 1 ? selected[0] : null;
+  const selText = selected.filter((e) => !e.image);
+  const textIds = selText.map((e) => e.id);
+  const shared = <K extends keyof El>(k: K) =>
+    selText.every((e) => e[k] === selText[0][k]) ? selText[0]?.[k] : undefined;
+  const available = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)];
+  const missing = sourceFonts.filter((s) => !available.some((k) => compact(k) === compact(s)));
+  const families = [...new Set(available.map(familyOf))];
+  const installedFamilies = [...new Set(installed.map((f) => familyOf(f.postscriptName)))]
+    .filter((f) => !families.includes(f))
+    .sort();
+  const inside = (page: number): Area | null =>
+    margin === null ? null : { l: margin, t: margin, r: pages[page].w - margin, b: pages[page].h - margin };
+
+  const commit = (next: El[], touch = "") => {
+    future.current = [];
+    if (!touch || touch !== lastTouch.current) {
+      past.current.push(elsRef.current);
+      if (past.current.length > 300) past.current.shift();
+    }
+    lastTouch.current = touch;
+    elsRef.current = next;
+    setEls(next);
+  };
+  const patch = (ids: string[], p: Partial<El> | ((e: El) => Partial<El>), touch = "") =>
+    commit(
+      elsRef.current.map((e) => (ids.includes(e.id) ? { ...e, ...(typeof p === "function" ? p(e) : p) } : e)),
+      touch,
+    );
+  const step = (from: typeof past, to: typeof past) => {
+    const next = from.current.pop();
+    if (!next) return;
+    to.current.push(elsRef.current);
+    lastTouch.current = "";
+    elsRef.current = next;
+    setEls(next);
+  };
+  const undo = () => step(past, future);
+  const redo = () => step(future, past);
+
+  const addCopies = (src: El[], dx: number, dy: number, page?: number) => {
+    const copies = src.map(({ orig: _o, deleted: _d, ...e }) => ({
+      ...e,
+      id: `new-${crypto.randomUUID()}`,
+      page: page ?? e.page,
+      x: e.x + dx,
+      y: e.y + dy,
+    }));
+    commit([...elsRef.current, ...copies]);
+    setSel(copies.map((c) => c.id));
+  };
+  const remove = (ids: string[]) => {
+    commit(
+      elsRef.current
+        .filter((e) => !(ids.includes(e.id) && !e.orig))
+        .map((e) => (ids.includes(e.id) ? { ...e, deleted: true } : e)),
+    );
+    setSel([]);
+  };
+
+  const unsaved = () => elsRef.current !== saved.current.els || hf !== saved.current.hf;
+  const clearPreviews = () => {
+    previews.clear();
+    clip.current = null;
+  };
+
+  const closePdf = () => {
+    if (unsaved() && !confirm("Close this PDF? Edits you haven't saved will be lost.")) return;
+    clearPreviews();
+    past.current = [];
+    future.current = [];
+    elsRef.current = [];
+    setFile(null);
+    setPages([]);
+    setEls([]);
+    setSel([]);
+    setAdding(false);
+    setReport(null);
+  };
+
+  const addFont = async (bytes: Uint8Array, label: string) => {
+    try {
+      const key = fontKey(bytes);
+      if (!key) throw new Error("it has no name, or is a font collection (.ttc). Load a single .ttf or .otf.");
+      document.fonts.add(await new FontFace(`pf-${key}`, bytes as BufferSource).load());
+      setFonts((m) => new Map(m).set(key, bytes));
+      if (elsRef.current.some((e) => compact(e.srcFont) === compact(key)))
+        commit(fontForSource(elsRef.current, key, key));
+      return key;
+    } catch (err) {
+      setReport({ ok: false, lines: [`Couldn't load font ${label}: ${errorText(err)}`] });
+    }
+  };
+  const addLocalFont = async (f: LocalFont) =>
+    addFont(new Uint8Array(await (await f.blob()).arrayBuffer()), f.postscriptName);
+
+  const loadInstalledList = async () => {
+    const list = await chromium.queryLocalFonts();
+    setInstalled(list);
+    return list;
+  };
+  const showInstalled = () =>
+    loadInstalledList().catch((err) =>
+      setReport({ ok: false, lines: [`Couldn't read installed fonts: ${errorText(err)}`] }),
+    );
+
+  async function findInstalled(wanted: string[], auto = false) {
+    try {
+      const local = await loadInstalledList();
+      if (auto && !local.length) return;
+      const found: string[] = [];
+      for (const s of wanted) {
+        const hit = local.find((f) => compact(f.postscriptName) === compact(s));
+        if (hit && (await addLocalFont(hit))) found.push(hit.postscriptName);
+      }
+      const left = wanted.filter((s) => !found.some((f) => compact(f) === compact(s)));
+      if (auto && !found.length) return;
+      setReport({
+        ok: !left.length,
+        lines: [
+          found.length
+            ? `Loaded from this PC: ${found.join(", ")}`
+            : "None of the missing fonts are installed on this PC.",
+          ...(left.length ? [`Still missing: ${left.join(", ")}`] : []),
+        ],
+      });
+    } catch (err) {
+      if (!auto) setReport({ ok: false, lines: [`Couldn't read installed fonts: ${errorText(err)}`] });
+    }
+  }
+
+  const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
+    try {
+      setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      clearPreviews();
+      const { pages, els } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
+      let list = els;
+      for (const key of fonts.keys()) list = fontForSource(list, key, key);
+      past.current = [];
+      future.current = [];
+      elsRef.current = list;
+      saved.current = { els: list, hf };
+      setFile({ name: f.name, handle });
+      remember(f.name, handle, f);
+      setPages(pages);
+      setEls(list);
+      setSel([]);
+      setReport(null);
+      const have = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)].map(compact);
+      const need = [...new Set(list.map((e) => e.srcFont).filter((s) => s && !have.includes(compact(s))))];
+      if (need.length && canReadLocalFonts()) await findInstalled(need, true);
+      return true;
+    } catch (err) {
+      setReport({ ok: false, lines: [`Couldn't open ${f.name}: ${errorText(err)}`] });
+      return false;
+    }
+  };
+
+  const openFiles = async (files: FileList | null, handles: (Promise<FileSystemHandle | null> | undefined)[] = []) => {
+    for (const [i, f] of [...(files ?? [])].entries()) {
+      if (/\.pdf$/i.test(f.name))
+        await openPdf(f, ((await handles[i]?.catch(() => null)) as FileSystemFileHandle | null) ?? undefined);
+      else if (/\.(ttf|otf)$/i.test(f.name)) await addFont(new Uint8Array(await f.arrayBuffer()), f.name);
+      else setReport({ ok: false, lines: [`${f.name}: open a .pdf, or a .ttf/.otf font.`] });
+    }
+  };
+
+  const pickPdf = async () => {
+    if (!("showOpenFilePicker" in window)) return pdfInput.current?.click();
+    try {
+      const [handle] = await chromium.showOpenFilePicker({ types: [PDF_TYPE] });
+      await openPdf(await handle.getFile(), handle);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") setReport({ ok: false, lines: [`Couldn't open: ${errorText(err)}`] });
+    }
+  };
+
+  const reopen = async (r: Recent) => {
+    const found = await load(r);
+    if (!found) return pickPdf();
+    if ("handle" in found) return openPdf(found.file, found.handle);
+    if (await openPdf(found.file))
+      setReport({
+        ok: true,
+        lines: [
+          `Opened the copy of ${r.name} saved ${openedAt(r.openedAt)}.`,
+          "If you've changed the file since, open it again with Open PDF.",
+        ],
+      });
+  };
+
+  const save = async () => {
+    if (!file) return;
+    const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-edited.pdf`;
+    let target: FileSystemFileHandle | undefined;
+    if ("showSaveFilePicker" in window) {
+      const pick = (startIn: unknown) => chromium.showSaveFilePicker({ suggestedName, startIn, types: [PDF_TYPE] });
+      try {
+        target = await pick(file.handle ?? "documents").catch((err: Error) =>
+          err.name === "AbortError" ? Promise.reject(err) : pick("documents"),
+        );
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return;
+      }
+    }
+    const name = target?.name ?? suggestedName;
+    setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
+    try {
+      const snapshot = { els: elsRef.current, hf };
+      const { pdf, problems } = await previews.request<"export">({
+        type: "export",
+        els: [...snapshot.els, ...hfEls],
+        fonts,
+      });
+      if (target) {
+        const out = await target.createWritable();
+        await out.write(pdf as BufferSource);
+        await out.close();
+      } else download(pdf, name);
+      saved.current = snapshot;
+      const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
+      setReport(
+        problems.length
+          ? { ok: false, lines: [`${done} Check these first:`, ...problems] }
+          : { ok: true, lines: [done, "Old text is gone and all new text reads back correctly."] },
+      );
+    } catch (err) {
+      setReport({ ok: false, lines: [`Not saved: ${errorText(err)}`] });
+    }
+  };
+
+  const swapFonts = async () => {
+    const targets = elsRef.current.filter(
+      (e) => !e.image && !e.deleted && (swap.scope === "all" || e.page === +swap.scope),
+    );
+    const style = (e: El) => [e.orig ? e.bold : isBoldName(e.font), e.orig ? e.italic : isItalicName(e.font)] as const;
+    const keys = [...fonts.keys()];
+    if (!families.includes(swap.family)) {
+      const faces = installed.filter((f) => familyOf(f.postscriptName) === swap.family);
+      const names = faces.map((f) => f.postscriptName);
+      for (const name of new Set(targets.map((e) => pickFace(swap.family, names, ...style(e))))) {
+        const key = await addLocalFont(faces.find((f) => f.postscriptName === name)!);
+        if (key) keys.push(key);
+      }
+      if (!keys.some((k) => familyOf(k) === swap.family)) return;
+    }
+    const ids = new Set(targets.map((e) => e.id));
+    commit(elsRef.current.map((e) => (ids.has(e.id) ? { ...e, font: pickFace(swap.family, keys, ...style(e)) } : e)));
+  };
+  const applyFontToAll = (el: El) => commit(fontForSource(elsRef.current, el.srcFont, el.font));
+
+  const boxOf = (x: El): Box => {
+    const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
+    const l = n ? n.offsetLeft / scale : x.x,
+      t = n ? n.offsetTop / scale : x.y;
+    const base = x.image ? NaN : x.y + x.ascent * x.size;
+    return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base };
+  };
+  const bounds = (boxes: Box[], base = NaN): Box => ({
+    l: Math.min(...boxes.map((b) => b.l)),
+    t: Math.min(...boxes.map((b) => b.t)),
+    r: Math.max(...boxes.map((b) => b.r)),
+    b: Math.max(...boxes.map((b) => b.b)),
+    base,
+  });
+
+  const copySel = (cut = false) => {
+    if (!selected.length) return;
+    const text = selText.map((x) => x.text).join("\n");
+    const c = (clip.current = { els: selected, text, pastes: 0, synced: false as boolean });
+    navigator.clipboard?.writeText(text).then(
+      () => (c.synced = true),
+      () => {},
+    );
+    if (cut) remove(sel);
+  };
+  const pasteCopied = (at?: At) => {
+    const c = clip.current;
+    if (!c) return;
+    if (at)
+      return addCopies(
+        c.els,
+        at.x - Math.min(...c.els.map((e) => e.x)),
+        at.y - Math.min(...c.els.map((e) => e.y)),
+        at.page,
+      );
+    c.pastes++;
+    addCopies(c.els, 10 * c.pastes, 10 * c.pastes, selected[0]?.page);
+  };
+  const pasteText = (text: string, at?: At) => {
+    const like = selText[0];
+    const top = margin ?? 36;
+    const el = newText({
+      page: at?.page ?? like?.page ?? 0,
+      text: text.replace(/\r\n?/g, "\n").trim(),
+      x: at?.x ?? like?.x ?? top,
+      y: at?.y ?? (like ? like.y + like.size * LINE_HEIGHT : top),
+      size: like?.size ?? 11,
+      color: like?.color ?? "#000000",
+      font: like?.font ?? "Helvetica",
+    });
+    addCopies([el], 0, 0);
+  };
+  const pasteAt = (at: At) =>
+    clip.current
+      ? pasteCopied(at)
+      : navigator.clipboard
+          ?.readText()
+          .then((t) => (t.trim() ? pasteText(t, at) : Promise.reject()))
+          .catch(() => setReport({ ok: false, lines: ["Nothing to paste yet. Copy something first."] }));
+  const duplicate = () => addCopies(selected, 10, 10);
+  const selectAll = () => setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
+  const canReset = selected.some((e) => e.orig && isDirty(e));
+  const resetSel = () =>
+    patch(sel, (e) =>
+      e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false, wrap: undefined, lineHeight: undefined } : {},
+    );
+  const mergeSel = () => {
+    const base = (e: El) => e.y + e.ascent * e.size;
+    const page = selText[0]?.page;
+    const texts = selText
+      .filter((e) => e.page === page)
+      .sort((a, b) => (Math.abs(base(a) - base(b)) > 2 ? base(a) - base(b) : a.x - b.x));
+    if (texts.length < 2) return;
+    const lines: number[] = [];
+    for (const t of texts) if (!lines.length || base(t) - lines.at(-1)! > 2) lines.push(base(t));
+    const [first, ...rest] = texts;
+    const left = Math.min(...texts.map((e) => e.x)),
+      right = Math.max(...texts.map((e) => boxOf(e).r));
+    const drop = new Set(rest.map((e) => e.id));
+    commit(
+      elsRef.current.flatMap((e) =>
+        e.id === first.id
+          ? [
+              {
+                ...e,
+                x: left,
+                text: texts.map((t) => t.text.trim()).join(" "),
+                wrap: Math.ceil(right - left) + 2,
+                lineHeight: lines.length > 1 ? (lines[1] - lines[0]) / first.size : undefined,
+              },
+            ]
+          : drop.has(e.id)
+            ? e.orig
+              ? [{ ...e, deleted: true }]
+              : []
+            : [e],
+      ),
+    );
+    setSel([first.id]);
+  };
+
+  const nudge = (dx: number, dy: number) => {
+    const moves = new Map<number, [number, number]>();
+    for (const p of new Set(selected.map((x) => x.page))) {
+      const area = inside(p);
+      const group = bounds(selected.filter((x) => x.page === p).map(boxOf));
+      moves.set(p, area ? confine(group, dx, dy, area) : [dx, dy]);
+    }
+    patch(sel, (el) => ({ x: el.x + moves.get(el.page)![0], y: el.y + moves.get(el.page)![1] }), `nudge:${sel.join()}`);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey,
+        key = e.key.toLowerCase();
+      if (mod && (key === "z" || key === "y")) {
+        if (!isTyping(e.target)) e.preventDefault(), key === "y" || e.shiftKey ? redo() : undo();
+        return;
+      }
+      if (isTyping(e.target)) return;
+      if (e.key === "Escape") setSel([]), setAdding(false);
+      if (mod && key === "a") return e.preventDefault(), selectAll();
+      if (mod && key === "v") return void (pasteTimer.current = window.setTimeout(() => pasteCopied(), 0));
+      if (!sel.length) return;
+      if (mod && (key === "c" || key === "x")) return copySel(key === "x");
+      if (mod && key === "d") return e.preventDefault(), duplicate();
+      if (e.key === "Delete" || e.key === "Backspace") e.preventDefault(), remove(sel);
+      const n = e.shiftKey ? 10 : 1;
+      const d = { ArrowLeft: [-n, 0], ArrowRight: [n, 0], ArrowUp: [0, -n], ArrowDown: [0, n] }[e.key];
+      if (d) e.preventDefault(), nudge(d[0], d[1]);
+    };
+    const onLeave = (e: BeforeUnloadEvent) => file && unsaved() && e.preventDefault();
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTyping(e.target) || !file) return;
+      clearTimeout(pasteTimer.current);
+      e.preventDefault();
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      const c = clip.current;
+      const same = (t: string) => t.replace(/\r\n?/g, "\n").trim() === c?.text.trim();
+      if (text.trim() && (!c || (c.synced && !same(text)))) pasteText(text);
+      else pasteCopied();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("beforeunload", onLeave);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("beforeunload", onLeave);
+      window.removeEventListener("paste", onPaste);
+    };
+  });
+
+  useEffect(() => {
+    if (!report?.ok || report.busy) return;
+    const t = setTimeout(() => setReport((r) => (r === report ? null : r)), 4000);
+    return () => clearTimeout(t);
+  }, [report]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: open the panel when a selection starts, not on every change to it
+  useEffect(() => void (sel.length && (setTab("edit"), setPanelOpen(true))), [sel.length > 0]);
+
+  const fitWidth = () => {
+    const m = pagesRef.current;
+    if (!m || !pages.length) return;
+    const widest = Math.max(...pages.map((p) => p.w));
+    setScale(clampScale(Math.floor(((m.clientWidth - 64) / widest) * 20) / 20));
+  };
+  const zoomBy = (d: number) => setScale((s) => clampScale(Math.round((s + d) * 100) / 100));
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit once per opened document, on small screens
+  useEffect(() => {
+    if (pages.length && matchMedia(NARROW).matches) fitWidth();
+  }, [pages]);
+  const goToPage = (p: number) =>
+    pagesRef.current?.querySelector(`.page[data-page="${p}"]`)?.scrollIntoView({ block: "start" });
+  const onPagesScroll = (e: UIEvent<HTMLElement>) => {
+    const m = e.currentTarget,
+      line = m.scrollTop + m.clientHeight / 3;
+    let cur = 0;
+    for (const d of m.querySelectorAll<HTMLElement>(".page")) if (d.offsetTop <= line) cur = +d.dataset.page!;
+    if (cur !== currentPage) setCurrentPage(cur);
+  };
+
+  const onElDown = (e: PointerEvent, el: El) => {
+    if (adding || e.button !== 0) return e.button === 2 && e.stopPropagation();
+    e.stopPropagation();
+    const mod = e.shiftKey || e.ctrlKey || e.metaKey;
+    const ids = sel.includes(el.id) ? sel : mod ? [...sel, el.id] : [el.id];
+    setSel(ids);
+    const start = new Map(elsRef.current.filter((x) => ids.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y }]));
+    const onPage = elsRef.current.filter((o) => o.page === el.page && !o.deleted);
+    const group = onPage.filter((o) => ids.includes(o.id)).map(boxOf);
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      touch: `drag:${performance.now()}`,
+      start,
+      page: el.page,
+      box: group.length ? bounds(group, boxOf(el).base) : boxOf(el),
+      others: onPage.filter((o) => !ids.includes(o.id)).map(boxOf),
+      toggle: mod && sel.includes(el.id) ? el.id : undefined,
+    };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onElMove = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const rawX = (e.clientX - d.x) / scale,
+      rawY = (e.clientY - d.y) / scale;
+    if (Math.abs(rawX) + Math.abs(rawY) < 2 / scale && lastTouch.current !== d.touch) return;
+    const whole = e.ctrlKey || e.metaKey;
+    const s = e.shiftKey
+      ? { dx: rawX, dy: rawY, guides: {} as Guides }
+      : whole
+        ? { dx: Math.round(rawX), dy: Math.round(rawY), guides: {} as Guides }
+        : prefs.snap === "1"
+          ? snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w)
+          : { dx: rawX, dy: rawY, guides: {} as Guides };
+    const area = inside(d.page);
+    const [dx, dy] = area ? confine(d.box, s.dx, s.dy, area) : [s.dx, s.dy];
+    const g = { x: dx === s.dx ? s.guides.x : undefined, y: dy === s.dy ? s.guides.y : undefined };
+    setGuides({ page: d.page, ...g });
+    const r = (n: number, exact: boolean) => (exact ? n : Math.round(n * 10) / 10);
+    patch(
+      [...d.start.keys()],
+      (el) => ({
+        x: r(d.start.get(el.id)!.x + dx, whole || g.x !== undefined || dx !== s.dx),
+        y: r(d.start.get(el.id)!.y + dy, whole || g.y !== undefined || dy !== s.dy),
+      }),
+      d.touch,
+    );
+  };
+  const endDrag = () => {
+    const d = drag.current;
+    if (d?.toggle && lastTouch.current !== d.touch) setSel((s) => s.filter((i) => i !== d.toggle));
+    drag.current = null;
+    setGuides(null);
+  };
+
+  const addTextAt = ({ page, x, y }: At) => {
+    const last = elsRef.current.find((e) => e.id === sel[0] && !e.image);
+    const size = last?.size ?? 11,
+      area = inside(page);
+    const fit = (v: number, lo: number, hi: number) => (area ? Math.max(lo, Math.min(v, hi)) : v);
+    const el = newText({
+      page,
+      text: "",
+      x: fit(Math.round(x), area?.l ?? 0, area?.r ?? 0),
+      y: fit(Math.round(y), area?.t ?? 0, (area?.b ?? 0) - size * LINE_HEIGHT),
+      size,
+      color: last?.color ?? "#000000",
+      font: last?.font ?? "Helvetica",
+    });
+    commit([...elsRef.current, el]);
+    setSel([el.id]);
+    setAdding(false);
+    setTab("edit");
+  };
+
+  const pointOn = (e: { clientX: number; clientY: number; currentTarget: Element }, page: number): At => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { page, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+  };
+  const onPageDown = (e: PointerEvent<HTMLDivElement>, page: number) => {
+    if (e.button !== 0) return;
+    const at = pointOn(e, page);
+    if (adding) return e.preventDefault(), addTextAt(at);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const boxes = elsRef.current.filter((o) => o.page === page && !o.deleted).map((o) => [o.id, boxOf(o)] as const);
+    marquee.current = { ...at, base: additive ? sel : [], boxes };
+    if (!additive) setSel([]);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPageMove = (e: PointerEvent<HTMLDivElement>) => {
+    const m = marquee.current;
+    if (!m) return;
+    const { x, y } = pointOn(e, m.page);
+    const box = { l: Math.min(m.x, x), r: Math.max(m.x, x), t: Math.min(m.y, y), b: Math.max(m.y, y) };
+    setBand({ page: m.page, ...box });
+    const hit = m.boxes
+      .filter(([, b]) => b.r >= box.l && b.l <= box.r && b.b >= box.t && b.t <= box.b)
+      .map(([id]) => id);
+    setSel([...new Set([...m.base, ...hit])]);
+  };
+  const onPageUp = () => {
+    marquee.current = null;
+    setBand(null);
+  };
+  const onPageMenu = (e: RMouseEvent<HTMLDivElement>, page: number) => {
+    e.preventDefault();
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-id]")?.dataset.id;
+    setSel(id ? (sel.includes(id) ? sel : [id]) : []);
+    setMenu({ ...pointOn(e, page), left: e.clientX, top: e.clientY });
+  };
+
+  const live = useRef<{ el: ElHandlers; page: PageHandlers }>(null!);
+  live.current = {
+    el: {
+      down: onElDown,
+      move: onElMove,
+      up: endDrag,
+      focusText: () => (textBox.current?.focus(), textBox.current?.select()),
+      focus: (el) => sel.includes(el.id) || setSel([el.id]),
+      resizeStart: (e) => {
+        e.stopPropagation();
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        resizing.current = `wrap:${performance.now()}`;
+      },
+      resizeMove: (e, el) => {
+        if (!resizing.current) return;
+        const page = (e.currentTarget as HTMLElement).closest(".page")!.getBoundingClientRect();
+        const right = Math.min((e.clientX - page.left) / scale, inside(el.page)?.r ?? Infinity);
+        patch([el.id], { wrap: Math.max(el.size * 2, Math.round(right - el.x)) }, resizing.current);
+      },
+      resizeEnd: () => void (resizing.current = ""),
+      unwrap: (id) => patch([id], { wrap: undefined }),
+    },
+    page: { down: onPageDown, move: onPageMove, up: onPageUp, menu: onPageMenu },
+  };
+  const elHandlers = useMemo<ElHandlers>(
+    () => ({
+      down: (e, el) => live.current.el.down(e, el),
+      move: (e) => live.current.el.move(e),
+      up: () => live.current.el.up(),
+      focusText: () => live.current.el.focusText(),
+      focus: (el) => live.current.el.focus(el),
+      resizeStart: (e) => live.current.el.resizeStart(e),
+      resizeMove: (e, el) => live.current.el.resizeMove(e, el),
+      resizeEnd: () => live.current.el.resizeEnd(),
+      unwrap: (id) => live.current.el.unwrap(id),
+    }),
+    [],
+  );
+  const pageHandlers = useMemo<PageHandlers>(
+    () => ({
+      down: (e, p) => live.current.page.down(e, p),
+      move: (e) => live.current.page.move(e),
+      up: () => live.current.page.up(),
+      menu: (e, p) => live.current.page.menu(e, p),
+    }),
+    [],
+  );
+
+  return {
+    prefs,
+    setPref,
+    resetPrefs,
+    theme,
+    margin,
+    recent,
+    forget,
+    reopen,
+    file,
+    pages,
+    els,
+    sel,
+    setSel,
+    fonts,
+    scale,
+    adding,
+    setAdding,
+    report,
+    setReport,
+    settingsOpen,
+    setSettingsOpen,
+    panelOpen,
+    setPanelOpen,
+    fileMenu,
+    setFileMenu,
+    tab,
+    setTab,
+    swap,
+    setSwap,
+    installed,
+    hf,
+    setHf,
+    guides,
+    menu,
+    setMenu,
+    band,
+    currentPage,
+    pdfInput,
+    pagesRef,
+    textBox,
+    byPage,
+    elById,
+    hfByPage,
+    editedPages,
+    sourceFonts,
+    previews,
+    selected,
+    one,
+    selText,
+    textIds,
+    font: shared("font"),
+    size: shared("size"),
+    color: shared("color"),
+    available,
+    missing,
+    families,
+    installedFamilies,
+    rotated: pages.some((p) => p.rotated),
+    canvasStyle,
+    edited: !!file && unsaved(),
+    canUndo: past.current.length > 0,
+    canRedo: future.current.length > 0,
+    canReset,
+    patch,
+    undo,
+    redo,
+    remove,
+    closePdf,
+    openFiles,
+    pickPdf,
+    save,
+    swapFonts,
+    applyFontToAll,
+    findInstalled,
+    showInstalled,
+    copySel,
+    pasteAt,
+    duplicate,
+    selectAll,
+    resetSel,
+    mergeSel,
+    addTextAt,
+    fitWidth,
+    zoomBy,
+    goToPage,
+    onPagesScroll,
+    elHandlers,
+    pageHandlers,
+  };
+}
+
+export type Editor = ReturnType<typeof useEditor>;

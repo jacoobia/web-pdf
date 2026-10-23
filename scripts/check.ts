@@ -13,8 +13,8 @@ import {
   removedOn,
   renderPage,
   wrapLines,
-} from "../src/pdf";
-import { confine, snap } from "../src/snap";
+} from "../src/lib/pdf";
+import { confine, snap } from "../src/lib/snap";
 import { CALIBRI, makeSample } from "./sample";
 
 const src = await makeSample();

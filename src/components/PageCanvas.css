@@ -1,0 +1,137 @@
+.pages {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 32px 24px 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  background: var(--bg);
+}
+.page {
+  position: relative;
+  flex: none;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: var(--page-shadow);
+  user-select: none;
+}
+.page.adding {
+  cursor: crosshair;
+}
+.page > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.marquee {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 1px solid var(--accent-fg);
+  background: var(--accent-wash);
+}
+.margin-guide {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed rgb(var(--accent-rgb) / 0.55);
+}
+.guide {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.8;
+}
+.guide.v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.guide.h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.el {
+  position: absolute;
+  cursor: move;
+  touch-action: none;
+}
+.el.hit {
+  border-radius: 2px;
+}
+.el.hit:hover {
+  background: var(--accent-wash);
+}
+.el.drawn {
+  white-space: pre;
+  line-height: 1.2;
+}
+.el.drawn:hover,
+.el.img.moved:hover {
+  outline: 1px dashed var(--accent);
+}
+.el.img img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.el.img.moved:empty {
+  background: rgb(128 128 128 / 0.15);
+}
+.el.sel {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.el.hf {
+  pointer-events: none;
+}
+.resize {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  width: 6px;
+  height: max(12px, 60%);
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+@media (pointer: coarse) {
+  .resize {
+    right: -10px;
+    width: 12px;
+    height: max(24px, 60%);
+  }
+}
+.zoom-float {
+  position: absolute;
+  left: calc(50% - var(--scrollbar-w, 0px) / 2);
+  bottom: calc(16px + var(--scrollbar-h, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--float);
+}
+@media (max-width: 760px) {
+  .pages {
+    padding: 16px var(--gutter) 96px;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .page {
+    margin: 0 auto;
+  }
+}

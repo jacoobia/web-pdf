@@ -1,0 +1,70 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(17 17 19 / 0.45);
+}
+.dialog {
+  width: min(560px, 100%);
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 0.12),
+    0 24px 48px rgb(0 0 0 / 0.18);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 8px 24px;
+}
+.dialog-head h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.dialog-tabs {
+  padding: 4px 24px 0;
+}
+.dialog-body {
+  overflow: auto;
+  padding: 4px 24px 24px;
+  display: flex;
+  flex-direction: column;
+}
+.dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .scrim {
+    padding: 0;
+    place-items: end stretch;
+  }
+  .dialog {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+  }
+  .dialog-head {
+    padding-left: var(--gutter);
+  }
+  .dialog-tabs,
+  .dialog-body,
+  .dialog-foot {
+    padding-left: var(--gutter);
+    padding-right: var(--gutter);
+  }
+}

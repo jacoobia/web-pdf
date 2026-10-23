@@ -16,6 +16,14 @@ Open an issue saying what you did, what you expected and what happened instead, 
 
 The pre-commit hook runs Biome on staged files and the typechecker. Commit messages are a single line of 72 characters or fewer, written as a summary of the change ("Fix wrapping of long words"), which the commit-msg hook checks.
 
+## Project layout
+
+- `src/routes/` pages. `index.tsx` is the editor, and only composes components.
+- `src/components/ui/` the UI toolkit: buttons, inputs, menus, dialogs and so on. Build new UI from these.
+- `src/components/` the editor's own components, built from the toolkit.
+- `src/lib/` logic with no markup: the PDF engine, the editor state hook, storage and browser helpers.
+- `src/styles/theme.css` colour, size and spacing tokens. Components use these variables rather than raw values.
+
 ## Code style
 
 Biome handles formatting and linting; `bun run format` fixes most of what it reports. Beyond that, match the code around your change and keep it readable without comments.
