@@ -47,11 +47,11 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 
 ## Browser support
 
-| | Chrome, Edge | Firefox, Safari |
-| --- | :---: | :---: |
-| Edit and save PDFs | ✓ | ✓ |
-| Save back over the original file | ✓ | Saves as a download |
-| Load fonts installed on your computer | ✓ | |
+| | Chrome, Edge | Brave | Firefox, Safari |
+| --- | :---: | :---: | :---: |
+| Edit and save PDFs | ✓ | ✓ | ✓ |
+| Save back over the original file | ✓ | ✓ | Saves as a download |
+| Load fonts installed on your computer | ✓ | Sometimes | |
 
 <sub>Tested in Chrome and Brave.</sub>
 
