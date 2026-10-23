@@ -1,0 +1,35 @@
+import { AppHeader } from "../components/AppHeader";
+import { AppShell, Workspace } from "../components/AppShell";
+import { ContextMenu } from "../components/ContextMenu";
+import { Inspector } from "../components/Inspector";
+import { PageCanvas } from "../components/PageCanvas";
+import { PageRail } from "../components/PageRail";
+import { Settings } from "../components/Settings";
+import { Toast } from "../components/ui";
+import { useEditor } from "../lib/editor";
+
+export default function EditorRoute() {
+  const editor = useEditor();
+  const { file, canvasStyle, report } = editor;
+  return (
+    <AppShell editor={editor}>
+      <AppHeader editor={editor} />
+      {canvasStyle && file && <PageRail editor={editor} />}
+      <Workspace>
+        <PageCanvas editor={editor} />
+        {canvasStyle && file && <Inspector editor={editor} />}
+      </Workspace>
+      {!canvasStyle && file && <Inspector editor={editor} />}
+      <ContextMenu editor={editor} />
+      {report && <Toast {...report} onDismiss={() => editor.setReport(null)} />}
+      {editor.settingsOpen && (
+        <Settings
+          prefs={editor.prefs}
+          set={editor.setPref}
+          onReset={editor.resetPrefs}
+          onClose={() => editor.setSettingsOpen(false)}
+        />
+      )}
+    </AppShell>
+  );
+}

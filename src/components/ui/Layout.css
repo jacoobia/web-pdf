@@ -1,0 +1,41 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+.stack.sm {
+  gap: 6px;
+}
+.stack.md {
+  gap: 12px;
+}
+.stack.lg {
+  gap: 28px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.section-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 20px;
+}
+@media (max-width: 420px) {
+  .grid.three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

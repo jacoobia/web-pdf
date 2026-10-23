@@ -1,0 +1,101 @@
+:root {
+  --bg: #f2f2f3;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --border: #e4e4e7;
+  --text: #18181b;
+  --muted: #71717a;
+  --danger: #b42318;
+  --ok: #15803d;
+  --accent: #0f766e;
+  --accent-rgb: 15 118 110;
+  --on-accent: #ffffff;
+  --accent-fg: var(--accent);
+  --accent-tint: rgb(var(--accent-rgb) / 0.14);
+  --accent-wash: rgb(var(--accent-rgb) / 0.08);
+  --selected: #ffffff;
+  --float: 0 2px 6px rgb(0 0 0 / 0.06), 0 12px 32px rgb(0 0 0 / 0.1);
+  --page-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.06);
+  --radius: 6px;
+  --radius-lg: 10px;
+  --control-h: 32px;
+  --control-h-sm: 28px;
+  --text-sm: 12px;
+  --text-lg: 15px;
+  --gutter: 16px;
+  color-scheme: light;
+  font:
+    13px / 1.5 "IBM Plex Sans",
+    system-ui,
+    "Segoe UI",
+    sans-serif;
+  color: var(--text);
+}
+:root[data-theme="dark"] {
+  --bg: #0e0e10;
+  --surface: #18181b;
+  --surface-2: #222226;
+  --border: #2c2c31;
+  --text: #f4f4f5;
+  --muted: #a1a1aa;
+  --danger: #f97066;
+  --ok: #4ade80;
+  --accent-fg: color-mix(in srgb, var(--accent) 62%, white);
+  --accent-tint: rgb(var(--accent-rgb) / 0.22);
+  --accent-wash: rgb(var(--accent-rgb) / 0.14);
+  --selected: #2e2e33;
+  --float: 0 2px 6px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.45);
+  --page-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  color-scheme: dark;
+}
+@media (pointer: coarse) {
+  :root {
+    --control-h: 40px;
+    --control-h-sm: 36px;
+  }
+}
+@media (max-width: 760px) {
+  :root {
+    --gutter: 12px;
+    font-size: 14px;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: 1px;
+}
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+a {
+  color: var(--accent-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced motion has to beat every component's own transition */
+    transition: none !important;
+    /* biome-ignore lint/complexity/noImportantStyles: as above */
+    animation-duration: 0.01ms !important;
+  }
+}

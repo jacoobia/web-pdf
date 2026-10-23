@@ -1,0 +1,19 @@
+.group {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.group .tool:hover:not(:disabled) {
+  background: var(--surface);
+}
+.group.plain {
+  background: none;
+  padding: 0;
+}
+.group.plain .tool:hover:not(:disabled) {
+  background: var(--surface-2);
+}
