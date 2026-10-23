@@ -1,10 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
-  STANDARD_FONTS, compact, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
+  STANDARD_FONTS, compact, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
   isItalicName, LINE_HEIGHT, measure, pickFace, removedOn, wrapLines, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
-import type { WorkerIn } from "./render.worker";
+import type { Replies, WorkerIn } from "./render.worker";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
 
 // Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
@@ -99,12 +99,12 @@ type ElHandlers = {
   resizeMove(e: RPointerEvent, el: El): void;
   resizeEnd(): void;
   unwrap(id: string): void;
-  pngUrl(png: Uint8Array): string;
 };
 
 /** One item on the page. Memoised: while dragging, only the items that actually moved re-render. */
-const ElView = memo(function ElView({ el, scale, selected, single, fonts, on }: {
+const ElView = memo(function ElView({ el, scale, selected, single, fonts, on, imageSrc }: {
   el: El; scale: number; selected: boolean; single: boolean; fonts: Map<string, Uint8Array>; on: ElHandlers;
+  imageSrc?: string;
 }) {
   const dirty = isDirty(el);
   const r = el.orig?.rect;
@@ -126,7 +126,7 @@ const ElView = memo(function ElView({ el, scale, selected, single, fonts, on }: 
       onDoubleClick={on.focusText}
     >
       {el.image
-        ? dirty && <img src={on.pngUrl(el.image.png)} alt="" draggable={false} />
+        ? dirty && imageSrc && <img src={imageSrc} alt="" draggable={false} />
         : dirty || !r ? shownText(el, fonts) || "\u00a0" : null}
       {single && !el.image && (
         <span
@@ -146,7 +146,7 @@ const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT
 
 export default function App() {
   // `handle` (Chrome/Edge) lets the save dialog open in the folder the PDF came from.
-  const [file, setFile] = useState<{ name: string; bytes: Uint8Array; handle?: FileSystemFileHandle } | null>(null);
+  const [file, setFile] = useState<{ name: string; handle?: FileSystemFileHandle } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [els, setEls] = useState<El[]>([]);
   const [sel, setSel] = useState<string[]>([]);
@@ -200,25 +200,59 @@ export default function App() {
   });
 
   const elsRef = useRef<El[]>([]);
+  // Grouped once per change: with thousands of items, filtering per page on every drag step was the cost.
+  const byPage = useMemo(() => {
+    const m = new Map<number, El[]>();
+    for (const e of els) (m.get(e.page) ?? m.set(e.page, []).get(e.page)!).push(e);
+    return m;
+  }, [els]);
+  const elById = useMemo(() => new Map(els.map((e) => [e.id, e])), [els]);
+  // Pages within a screen of the viewport. Only these get item views and previews.
+  const [near, setNear] = useState(new Set([0, 1, 2]));
+  const pageObserver = useRef<IntersectionObserver | null>(null);
+  const observePage = (div: HTMLDivElement | null) => {
+    if (!div) return;
+    pageObserver.current ??= new IntersectionObserver(
+      (entries) =>
+        setNear((old) => {
+          const next = new Set(old);
+          for (const e of entries) {
+            const p = +(e.target as HTMLElement).dataset.page!;
+            if (e.isIntersecting) next.add(p);
+            else next.delete(p);
+          }
+          return next.size === old.size && [...next].every((p) => old.has(p)) ? old : next;
+        }),
+      { root: div.closest(".pages"), rootMargin: "100% 0px" },
+    );
+    pageObserver.current.observe(div);
+  };
   const past = useRef<El[][]>([]);
   const lastTouch = useRef("");
   // Page previews come from a worker; `wanted` holds the latest request per page so stale results are dropped.
   const worker = useRef<Worker | null>(null);
   const canvases = useRef(new Map<number, HTMLCanvasElement>());
   const wanted = useRef(new Map<number, string>());
-  type Exported = { pdf?: Uint8Array; problems?: string[]; error?: string };
-  const exports = useRef(new Map<number, (r: Exported) => void>());
-  const post = (msg: WorkerIn) => worker.current?.postMessage(msg);
+  const pending = useRef(new Map<number, (r: { error?: string }) => void>());
+  const nextId = useRef(0);
+  const post = (msg: WorkerIn, transfer: Transferable[] = []) => worker.current?.postMessage(msg, { transfer });
+  /** Ask the worker for something and wait for its reply. */
+  const request = <T extends keyof Replies>(msg: Omit<Extract<WorkerIn, { type: T }>, "id">, transfer: Transferable[] = []) =>
+    new Promise<Replies[T]>((resolve, reject) => {
+      const id = ++nextId.current;
+      pending.current.set(id, (r) => (r.error ? reject(new Error(r.error)) : resolve(r as Replies[T])));
+      post({ ...msg, id } as unknown as WorkerIn, transfer);
+    });
   useEffect(() => {
     const w = new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" });
     w.onerror = (e) => {
-      for (const done of exports.current.values()) done({ error: `The background worker failed: ${e.message}` });
-      exports.current.clear();
+      for (const done of pending.current.values()) done({ error: `The background worker failed: ${e.message}` });
+      pending.current.clear();
     };
-    w.onmessage = ({ data }: MessageEvent<({ type: "render"; page: number; key: string; bitmap?: ImageBitmap; error?: string }) | ({ type: "export"; id: number } & Exported)>) => {
-      if (data.type === "export") {
-        exports.current.get(data.id)?.(data);
-        exports.current.delete(data.id);
+    w.onmessage = ({ data }: MessageEvent<({ type: "render"; page: number; key: string; bitmap?: ImageBitmap; error?: string }) | { type: "reply"; id: number; error?: string }>) => {
+      if (data.type === "reply") {
+        pending.current.get(data.id)?.(data);
+        pending.current.delete(data.id);
         return;
       }
       if (data.error) console.warn(`Preview of page ${data.page + 1} failed:`, data.error);
@@ -233,13 +267,23 @@ export default function App() {
     worker.current = w;
     return () => w.terminate();
   }, []);
-  const pngUrls = useRef(new Map<Uint8Array, string>());
-  const resizing = useRef("");
-  const pngUrl = (png: Uint8Array) => {
-    let url = pngUrls.current.get(png);
-    if (!url) pngUrls.current.set(png, (url = URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" }))));
-    return url;
+  // Moved images need their pixels; the worker decodes each one the first time it's asked (null = on its way).
+  const imageUrls = useRef(new Map<string, string | null>());
+  const [, imageLoaded] = useState(0);
+  const imageUrl = (img: NonNullable<El["image"]>) => {
+    const key = `${img.page}:${img.index}`;
+    const known = imageUrls.current.get(key);
+    if (known !== undefined) return known ?? undefined;
+    imageUrls.current.set(key, null);
+    request<"image">({ type: "image", page: img.page, index: img.index }).then(
+      ({ png }) => {
+        imageUrls.current.set(key, URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" })));
+        imageLoaded((n) => n + 1);
+      },
+      () => imageUrls.current.delete(key),
+    );
   };
+  const resizing = useRef("");
   const drag = useRef<{
     x: number; y: number; touch: string; start: Map<string, { x: number; y: number }>;
     page: number; box: Box; others: Box[]; toggle?: string;
@@ -301,8 +345,9 @@ export default function App() {
   const unsaved = () => elsRef.current !== saved.current.els || hf !== saved.current.hf;
 
   const clearPreviews = () => {
-    for (const url of pngUrls.current.values()) URL.revokeObjectURL(url);
-    pngUrls.current.clear();
+    for (const url of imageUrls.current.values()) if (url) URL.revokeObjectURL(url);
+    imageUrls.current.clear();
+    clip.current = null; // copied images point into the old file
     wanted.current.clear();
     for (const c of canvases.current.values()) c.width = 0;
   };
@@ -322,16 +367,18 @@ export default function App() {
 
   const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
     try {
+      setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const { pages, els } = extract(bytes);
+      clearPreviews();
+      // Read in the worker, which keeps the bytes for previews and saving.
+      const { pages, els } = await request<"open">({ type: "open", bytes }, [bytes.buffer]);
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
-      clearPreviews();
-      post({ type: "load", bytes });
       past.current = [];
       elsRef.current = list;
       saved.current = { els: list, hf };
-      setFile({ name: f.name, bytes, handle });
+      setFile({ name: f.name, handle });
+      setNear(new Set([0, 1, 2]));
       remember(f.name, handle);
       setPages(pages);
       setEls(list);
@@ -368,7 +415,7 @@ export default function App() {
     }
   };
 
-  const sourceFonts = [...new Set(els.map((e) => e.srcFont).filter(Boolean))];
+  const sourceFonts = useMemo(() => [...new Set(els.map((e) => e.srcFont).filter(Boolean))], [els]);
   const available = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)];
   const missing = sourceFonts.filter((s) => !available.some((k) => compact(k) === compact(s)));
   const families = [...new Set(available.map(familyOf))];
@@ -458,11 +505,7 @@ export default function App() {
     try {
       const snapshot = { els: elsRef.current, hf };
       // Built in the worker, so the page (and the spinner) keep going while it saves.
-      const { pdf, problems } = await new Promise<{ pdf: Uint8Array; problems: string[] }>((resolve, reject) => {
-        const id = exports.current.size + Date.now();
-        exports.current.set(id, (r) => (r.error ? reject(new Error(r.error)) : resolve(r as { pdf: Uint8Array; problems: string[] })));
-        post({ type: "export", id, els: [...snapshot.els, ...hfEls], fonts });
-      });
+      const { pdf, problems } = await request<"export">({ type: "export", els: [...snapshot.els, ...hfEls], fonts });
       if (target) {
         const out = await target.createWritable();
         await out.write(pdf as BufferSource);
@@ -498,7 +541,12 @@ export default function App() {
     if (!file) return;
     const t = setTimeout(() => {
       pages.forEach((_, p) => {
-        const removed = removedOn(els, p);
+        if (!near.has(p)) {
+          // Off screen: free its pixels (about 4MB a page); it re-renders when it comes back.
+          if (wanted.current.delete(p)) canvases.current.get(p)!.width = 0;
+          return;
+        }
+        const removed = removedOn(byPage.get(p) ?? [], p);
         const key = `${scale}|${JSON.stringify(removed)}`;
         if (wanted.current.get(p) === key) return;
         wanted.current.set(p, key);
@@ -506,7 +554,7 @@ export default function App() {
       });
     }, 30);
     return () => clearTimeout(t);
-  }, [file, pages, els, scale]);
+  }, [file, pages, byPage, scale, near]);
 
   // Shared by the keyboard shortcuts and the context menu.
   type At = { page: number; x: number; y: number };
@@ -738,7 +786,7 @@ export default function App() {
   const hfEls = headerFooterEls(hf, pages);
 
   const selSet = new Set(sel);
-  const selected = els.filter((e) => selSet.has(e.id));
+  const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
   // Selecting text brings its settings into view.
   useEffect(() => void (sel.length && setTab("edit")), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
@@ -768,7 +816,6 @@ export default function App() {
     },
     resizeEnd: () => void (resizing.current = ""),
     unwrap: (id) => patch([id], { wrap: undefined }),
-    pngUrl,
   };
   const elHandlers = useMemo<ElHandlers>(() => ({
     down: (e, el) => live.current.down(e, el),
@@ -779,7 +826,6 @@ export default function App() {
     resizeMove: (e, el) => live.current.resizeMove(e, el),
     resizeEnd: () => live.current.resizeEnd(),
     unwrap: (id) => live.current.unwrap(id),
-    pngUrl: (png) => live.current.pngUrl(png),
   }), []);
 
   // Reuse each item's React element until the item, its selection state, the zoom or the fonts change.
@@ -787,10 +833,14 @@ export default function App() {
   const views = useRef(new WeakMap<El, { key: string; fonts: Map<string, Uint8Array>; node: ReactElement }>());
   const viewOf = (el: El) => {
     const selectedNow = selSet.has(el.id), single = one?.id === el.id;
-    const key = `${scale}|${selectedNow}|${single}`;
+    const imageSrc = el.image && isDirty(el) ? imageUrl(el.image) : undefined;
+    const key = `${scale}|${selectedNow}|${single}|${imageSrc}`;
     const hit = views.current.get(el);
     if (hit && hit.key === key && hit.fonts === fonts) return hit.node;
-    const node = <ElView key={el.id} el={el} scale={scale} selected={selectedNow} single={single} fonts={fonts} on={elHandlers} />;
+    const node = (
+      <ElView key={el.id} el={el} scale={scale} selected={selectedNow} single={single} fonts={fonts} on={elHandlers}
+        imageSrc={imageSrc} />
+    );
     views.current.set(el, { key, fonts, node });
     return node;
   };
@@ -876,6 +926,8 @@ export default function App() {
         {pages.map((pg, p) => (
           <div
             key={p}
+            ref={observePage}
+            data-page={p}
             className={adding ? "page adding" : "page"}
             style={{ width: pg.w * scale, height: pg.h * scale }}
             onPointerDown={(e) => (e.stopPropagation(), onPageDown(e, p))}
@@ -900,8 +952,8 @@ export default function App() {
             {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
             {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
             {/* images first, so text drawn over them stays clickable */}
-            {els.filter((el) => el.page === p && !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map(viewOf)}
-            {hfEls.filter((el) => el.page === p).map((el) => (
+            {near.has(p) && (byPage.get(p) ?? []).filter((el) => !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map(viewOf)}
+            {near.has(p) && hfEls.filter((el) => el.page === p).map((el) => (
               <div key={el.id} className="el drawn hf" style={drawnStyle(el, scale)}>{el.text}</div>
             ))}
           </div>

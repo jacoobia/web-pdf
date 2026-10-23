@@ -2,7 +2,7 @@
 // MuPDF reads text (with fonts), renders pages and truly removes old text (redaction).
 // pdf-lib writes the new text with embedded fonts so it stays selectable for ATS parsers.
 import * as mupdf from "mupdf";
-import { PDFDocument, StandardFontEmbedder, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFontEmbedder, rgb, type PDFFont, type PDFImage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -22,7 +22,9 @@ export type El = Style & {
   deleted?: boolean;
   orig?: Style & { text: string; x: number; y: number; rect: Rect };
   align?: "left" | "center" | "right"; // which edge of the text sits at x
-  image?: { png: Uint8Array; w: number; h: number }; // set for images; text fields are unused then
+  // Set for images (text fields unused then). `page`/`index` locate the original image; its pixels are only
+  // decoded when it's moved, because converting every photo up front made big PDFs slow to open.
+  image?: { w: number; h: number; page: number; index: number };
   wrap?: number; // box width in points; text wraps to it. Unset = one line per line break
   lineHeight?: number; // line spacing as a multiple of size, default LINE_HEIGHT
 };
@@ -199,6 +201,24 @@ const hex = (c: mupdf.Color) => {
   return "#" + [r, g, b].map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
 };
 
+const STEXT = "preserve-whitespace,preserve-images";
+
+/** PNG of the `index`th image on a page, counted in the same order `extract` sees them. */
+function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Array {
+  let n = 0, png: Uint8Array | undefined;
+  doc.loadPage(page).toStructuredText(STEXT).walk({
+    onImageBlock(_bbox, _transform, image) {
+      if (n++ !== index) return;
+      let pix = image.toPixmap();
+      const c = pix.getColorSpace()?.getNumberOfComponents();
+      if (c !== 1 && c !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
+      png = pix.asPNG();
+    },
+  });
+  if (!png) throw new Error(`Image ${index + 1} on page ${page + 1} is missing.`);
+  return png;
+}
+
 type Ch = { c: string; ox: number; oy: number; l: number; r: number; t: number; b: number };
 type Run = { name: string; size: number; color: string; bold: boolean; italic: boolean; chars: Ch[] };
 
@@ -231,20 +251,19 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
       }
       run = null;
     };
-    page.toStructuredText("preserve-whitespace,preserve-images").walk({
+    let images = 0;
+    page.toStructuredText(STEXT).walk({
       onImageBlock(bbox, _transform, image) {
+        const index = images++;
         const rect = { x: bbox[0], y: bbox[1], w: bbox[2] - bbox[0], h: bbox[3] - bbox[1] };
         // ponytail: page-sized backgrounds would swallow every click, so they stay part of the page
         if (rect.w * rect.h > 0.8 * (x1 - x0) * (y1 - y0) || !image.getColorSpace()) return;
-        let pix = image.toPixmap();
-        const n = pix.getColorSpace()?.getNumberOfComponents();
-        if (n !== 1 && n !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
         const x = round(rect.x), y = round(rect.y);
         const none = { font: "", size: 0, color: "" };
         els.push({
           id: `p${p}-${els.length}`, page: p, text: "", x, y, ascent: 0, ...none,
           srcFont: "", bold: false, italic: false,
-          image: { png: pix.asPNG(), w: rect.w, h: rect.h },
+          image: { w: rect.w, h: rect.h, page: p, index },
           orig: { ...none, text: "", x, y, rect },
         });
       },
@@ -325,6 +344,7 @@ const rectKey = (kind: string, r: Rect) => `${kind}${r.x},${r.y},${r.w},${r.h}`;
  */
 export class Previewer {
   private doc: mupdf.PDFDocument;
+  private source?: mupdf.PDFDocument; // untouched copy, for decoding images whose original has been removed
   private applied = new Map<number, Set<string>>();
   constructor(private bytes: Uint8Array) {
     this.doc = open(bytes);
@@ -348,8 +368,12 @@ export class Previewer {
     p.destroy();
     return out;
   }
+  imagePng(page: number, index: number) {
+    return imagePng((this.source ??= open(this.bytes)), page, index);
+  }
   destroy() {
     this.doc.destroy();
+    this.source?.destroy();
   }
 }
 
@@ -369,6 +393,13 @@ export async function exportPdf(
   fonts: Map<string, Uint8Array>,
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
+  // Decode moved images before their originals are removed below.
+  const pngs = new Map<string, Uint8Array>();
+  for (const el of els)
+    if (el.image && !el.deleted && isDirty(el)) {
+      const key = `${el.image.page}:${el.image.index}`;
+      if (!pngs.has(key)) pngs.set(key, imagePng(doc, el.image.page, el.image.index));
+    }
   for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
   // garbage collection drops the old content streams, so the removed text is gone from the file bytes too
   // Copied out: asUint8Array is a view into MuPDF's memory, which goes blank if that memory grows while
@@ -403,13 +434,16 @@ export async function exportPdf(
   };
 
   const pages = out.getPages();
+  const images = new Map<string, PDFImage>(); // embedded once even when copies share an image
   for (const el of els) {
     if (!isDirty(el) || el.deleted) continue;
     const page = pages[el.page];
     const box = page.getCropBox();
     if (el.image) {
+      const key = `${el.image.page}:${el.image.index}`;
+      if (!images.has(key)) images.set(key, await out.embedPng(pngs.get(key)!));
       // ponytail: redrawn upright at its box size, so a rotated or skewed image comes back straight
-      page.drawImage(await out.embedPng(el.image.png), {
+      page.drawImage(images.get(key)!, {
         x: box.x + el.x, y: box.y + box.height - el.y - el.image.h, width: el.image.w, height: el.image.h,
       });
       continue;

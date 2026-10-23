@@ -96,6 +96,7 @@ body { margin: 0; background: var(--bg); }
 .el.hit:hover { background: rgb(47 95 208 / 0.12); }
 .el.drawn { white-space: pre; line-height: 1.2; }
 .el.img img { display: block; width: 100%; height: 100%; pointer-events: none; }
+.el.img.moved:empty { background: rgb(128 128 128 / 0.15); } /* pixels still loading */
 .el.img.moved:hover { outline: 1px dashed var(--accent); }
 .el.drawn:hover { outline: 1px dashed var(--accent); }
 .resize {
