@@ -1,7 +1,7 @@
 // End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { extract, exportPdf, familyOf, fontKey, headerFooterEls, measure, pickFace, removedOn, renderPage, wrapLines, type El } from "../src/pdf";
+import { extract, exportPdf, familyOf, fontKey, headerFooterEls, measure, pickFace, Previewer, removedOn, renderPage, wrapLines, type El } from "../src/pdf";
 import { confine, snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
@@ -31,6 +31,16 @@ els.push({
 const shot = renderPage(src, 0, 1, removedOn(els, 0));
 assert.equal(shot.rgba.length, shot.w * shot.h * 4, "renders RGBA pixels");
 assert.deepEqual([shot.w, shot.h], [595, 842]);
+
+// one open document for previews: removals stack up, taking one back reopens; output always matches a fresh render
+{
+  const all = extract(src).els.filter((e) => !e.image);
+  const removeFirst = (n: number) => removedOn(all.map((e, i) => (i < n ? { ...e, deleted: true } : e)), 0);
+  const same = (a: { rgba: Uint8ClampedArray }, b: { rgba: Uint8ClampedArray }) => Buffer.compare(Buffer.from(a.rgba), Buffer.from(b.rgba)) === 0;
+  const live = new Previewer(src);
+  for (const n of [1, 3, 5, 2, 0]) assert.ok(same(live.render(0, 1, removeFirst(n)), renderPage(src, 0, 1, removeFirst(n))), `preview after ${n} removals`);
+  live.destroy();
+}
 const { pdf, problems } = await exportPdf(src, els, new Map([[key, calibri]]));
 assert.deepEqual(problems, []);
 

@@ -301,12 +301,9 @@ function removeEdited(page: mupdf.PDFPage, removed: Removed) {
   redact(page, removed.images, true);
 }
 
-/** RGBA pixels of a page with removed originals taken out. Raw pixels, because PNG encoding was the slow part. */
-export function renderPage(bytes: Uint8Array, page: number, scale: number, removed: Removed) {
-  // ponytail: reopens the document per render; fine for CV-sized files, cache the doc if big PDFs lag
-  const p = open(bytes).loadPage(page);
-  removeEdited(p, removed);
-  const pix = p.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false);
+/** RGBA pixels of a page. Raw pixels, because PNG encoding was the slow part. */
+function pixels(page: mupdf.PDFPage, scale: number) {
+  const pix = page.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false);
   const w = pix.getWidth(), h = pix.getHeight(), stride = pix.getStride(), src = pix.getPixels();
   const rgba = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++)
@@ -316,7 +313,54 @@ export function renderPage(bytes: Uint8Array, page: number, scale: number, remov
       rgba[d + 2] = src[s + 2];
       rgba[d + 3] = 255;
     }
+  pix.destroy();
   return { w, h, rgba };
+}
+
+const rectKey = (kind: string, r: Rect) => `${kind}${r.x},${r.y},${r.w},${r.h}`;
+
+/**
+ * Keeps one document open for previews. Removing an original changes the open document for good, so
+ * new removals are applied on top of earlier ones; only taking one back (undo, reset) reopens it.
+ */
+export class Previewer {
+  private doc: mupdf.PDFDocument;
+  private applied = new Map<number, Set<string>>();
+  constructor(private bytes: Uint8Array) {
+    this.doc = open(bytes);
+  }
+  render(page: number, scale: number, removed: Removed) {
+    const want = new Set([...removed.text.map((r) => rectKey("t", r)), ...removed.images.map((r) => rectKey("i", r))]);
+    const have = this.applied.get(page) ?? new Set<string>();
+    if ([...have].some((k) => !want.has(k))) {
+      this.doc.destroy();
+      this.doc = open(this.bytes);
+      this.applied.clear();
+      have.clear();
+    }
+    const p = this.doc.loadPage(page);
+    removeEdited(p, {
+      text: removed.text.filter((r) => !have.has(rectKey("t", r))),
+      images: removed.images.filter((r) => !have.has(rectKey("i", r))),
+    });
+    this.applied.set(page, want);
+    const out = pixels(p, scale);
+    p.destroy();
+    return out;
+  }
+  destroy() {
+    this.doc.destroy();
+  }
+}
+
+/** One-off render from a freshly opened document. */
+export function renderPage(bytes: Uint8Array, page: number, scale: number, removed: Removed) {
+  const preview = new Previewer(bytes);
+  try {
+    return preview.render(page, scale, removed);
+  } finally {
+    preview.destroy();
+  }
 }
 
 export async function exportPdf(
