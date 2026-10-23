@@ -30,8 +30,8 @@ Tested in Chrome and Brave, and it should work in any current browser. Chrome an
 Requires [Bun](https://bun.sh) 1.2 or newer.
 
 ```sh
-git clone https://github.com/jacoobia/quick-pdf.git
-cd quick-pdf
+git clone https://github.com/jacoobia/web-pdf.git
+cd web-pdf
 bun install
 bun run dev
 ```

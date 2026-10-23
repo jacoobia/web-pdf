@@ -1,7 +1,7 @@
 import type { Editor } from "../lib/editor";
 import { Button, IconButton, IconLink } from "./ui";
 
-export const REPO_URL = "https://github.com/jacoobia/quick-pdf";
+export const REPO_URL = "https://github.com/jacoobia/web-pdf";
 
 export const SourceLink = () => <IconLink icon="github" label="Source code on GitHub" href={REPO_URL} />;
 
