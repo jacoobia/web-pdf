@@ -10,6 +10,21 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
   <img alt="The editor on a phone, with the edit panel open as a sheet" src="docs/images/editor-phone.png" width="25%">
 </p>
 
+## Features
+
+- Edit existing text in place. Edits are drawn in the PDF's own font when it's available.
+- Add new text boxes that wrap to a width you set.
+- Move, copy and delete text and images, with snapping to nearby text.
+- Add headers and footers with page numbers.
+- Undo, redo, multi-select and a right-click menu.
+- Light and dark themes, and a layout that works on phones.
+
+PDFs are read and rendered with [MuPDF](https://mupdf.com) in a web worker, and new text is written with [pdf-lib](https://pdf-lib.js.org). Only the text you change is redrawn; the rest of the file is kept as it was.
+
+## Browser support
+
+Tested in Chrome and Brave, and it should work in any current browser. Chrome and Edge can also save back over the original file and load fonts installed on your computer. Firefox and Safari save the edited PDF as a download instead.
+
 ## Getting started
 
 Requires [Bun](https://bun.sh) 1.2 or newer.
@@ -31,6 +46,12 @@ bun run dev
 | `bun run format` | Fix lint and formatting issues |
 | `bun run typecheck` | Run the TypeScript compiler |
 | `bun run test` | Run the end-to-end checks (Windows only) |
+
+## Deploying
+
+`bun run build` produces a static site in `dist/` that any static host can serve. Serve it over HTTPS, as saving to files and reading installed fonts only work on secure pages.
+
+Web PDF is licensed under the AGPL, so a hosted copy has to offer its source code to its users. The app links to this repository; if you host a modified version, point `REPO_URL` in `src/components/EditorTools.tsx` at your fork.
 
 ## Contributing
 
