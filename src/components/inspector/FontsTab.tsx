@@ -1,6 +1,6 @@
 import { canReadLocalFonts } from "../../lib/browser";
 import type { Editor } from "../../lib/editor";
-import { fontHelp } from "../../lib/pdf";
+import { fontHelp } from "../../lib/model";
 import { Button, Field, FileButton, Grid, Muted, Row, Section, Select, Tag, TextLink } from "../ui";
 import "./FontsTab.css";
 

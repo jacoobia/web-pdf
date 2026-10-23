@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type El, type PageInfo, removedOn } from "./pdf";
+import { type El, type PageInfo, removedOn } from "./model";
 import type { Replies, WorkerIn } from "./render.worker";
 
 type Rendered =

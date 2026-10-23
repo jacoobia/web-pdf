@@ -1,5 +1,5 @@
 import type { Editor } from "../../lib/editor";
-import { LINE_HEIGHT } from "../../lib/pdf";
+import { LINE_HEIGHT } from "../../lib/model";
 import { Button, ColorInput, Field, Grid, Kbd, List, NumberInput, Row, Section, Select, TextArea } from "../ui";
 import { FontNote } from "./FontNote";
 

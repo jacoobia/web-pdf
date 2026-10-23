@@ -2,7 +2,7 @@ import { memo } from "react";
 import { cx } from "../lib/cx";
 import { drawnStyle, shownText } from "../lib/drawn";
 import type { ElHandlers } from "../lib/editor";
-import { type El, isDirty } from "../lib/pdf";
+import { type El, isDirty } from "../lib/model";
 
 const boxOf = (el: El, scale: number) => {
   const r = el.orig?.rect;

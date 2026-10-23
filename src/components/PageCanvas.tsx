@@ -1,6 +1,6 @@
 import { type ReactElement, useEffect, useRef } from "react";
 import type { Editor } from "../lib/editor";
-import { type El, isDirty, type PageInfo } from "../lib/pdf";
+import { type El, isDirty, type PageInfo } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
 import { HeaderFooterItem, PageItem } from "./PageItem";
 import { StartScreen } from "./StartScreen";
