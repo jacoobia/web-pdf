@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactElement, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent, type MouseEvent as RMouseEvent, type PointerEvent as RPointerEvent, type ReactElement, type UIEvent } from "react";
 import {
   STANDARD_FONTS, compact, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
   isItalicName, LINE_HEIGHT, measure, pickFace, removedOn, wrapLines, type HeaderFooter,
@@ -6,6 +6,7 @@ import {
 } from "./pdf";
 import type { Replies, WorkerIn } from "./render.worker";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
+import { DEFAULT_PREFS, Group, Icon, Segmented, Settings, Tool, type Prefs } from "./ui";
 
 // Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
 const cssBaseline = (lineHeight: number) => 0.35 + lineHeight / 2;
@@ -32,17 +33,6 @@ function usePref(key: string, initial: string) {
     } catch {}
   }, [key, value]);
   return [value, setValue] as const;
-}
-
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button className="btn icon" aria-label={label} title={label} onClick={onClick}>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {children}
-      </svg>
-    </button>
-  );
 }
 
 const TABS = [["edit", "Edit"], ["fonts", "Fonts"], ["page", "Page"]] as const;
@@ -184,9 +174,33 @@ export default function App() {
       setReport({ ok: false, lines: [`Couldn't reopen ${r.name}.`, "It may have been moved, renamed or deleted. Open it again to refresh the entry."] });
     }
   };
-  const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  // Appearance and editing preferences; the Settings window edits them all.
+  const [themePref, setThemePref] = usePref("theme", DEFAULT_PREFS.theme);
+  const [uiStyle, setUiStyle] = usePref("uiStyle", DEFAULT_PREFS.uiStyle);
+  const [accent, setAccent] = usePref("accent", DEFAULT_PREFS.accent);
+  const [side, setSide] = usePref("side", DEFAULT_PREFS.side);
+  const [snapOn, setSnapOn] = usePref("snap", DEFAULT_PREFS.snap);
+  const [systemDark, setSystemDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const m = matchMedia("(prefers-color-scheme: dark)");
+    const follow = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    m.addEventListener("change", follow);
+    return () => m.removeEventListener("change", follow);
+  }, []);
+  const theme = themePref === "system" ? (systemDark ? "dark" : "light") : themePref;
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
-  const [side, setSide] = usePref("side", "right");
+  // The accent drives a few derived colours: tints for selection, and readable text on top of it.
+  useEffect(() => {
+    const hex = /^#[0-9a-f]{6}$/i.test(accent) ? accent : DEFAULT_PREFS.accent;
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const s = document.documentElement.style;
+    s.setProperty("--accent", hex);
+    s.setProperty("--accent-rgb", `${r} ${g} ${b}`);
+    s.setProperty("--on-accent", 0.299 * r + 0.587 * g + 0.114 * b > 160 ? "#111113" : "#ffffff");
+  }, [accent]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [fileMenu, setFileMenu] = useState(false);
   const [tab, setTab] = usePref("tab", "edit");
   const [marginOn, setMarginOn] = usePref("marginOn", "0");
   const [marginPt, setMarginPt] = usePref("marginPt", "36");
@@ -201,9 +215,16 @@ export default function App() {
 
   const elsRef = useRef<El[]>([]);
   // Grouped once per change: with thousands of items, filtering per page on every drag step was the cost.
+  // A page whose items didn't change keeps its previous array, so its cached view can be reused.
+  const pageArrays = useRef(new Map<number, El[]>());
   const byPage = useMemo(() => {
     const m = new Map<number, El[]>();
     for (const e of els) (m.get(e.page) ?? m.set(e.page, []).get(e.page)!).push(e);
+    for (const [p, list] of m) {
+      const old = pageArrays.current.get(p);
+      if (old && old.length === list.length && old.every((e, i) => e === list[i])) m.set(p, old);
+    }
+    pageArrays.current = m;
     return m;
   }, [els]);
   const elById = useMemo(() => new Map(els.map((e) => [e.id, e])), [els]);
@@ -228,11 +249,29 @@ export default function App() {
     pageObserver.current.observe(div);
   };
   const past = useRef<El[][]>([]);
+  const future = useRef<El[][]>([]);
   const lastTouch = useRef("");
   // Page previews come from a worker; `wanted` holds the latest request per page so stale results are dropped.
   const worker = useRef<Worker | null>(null);
   const canvases = useRef(new Map<number, HTMLCanvasElement>());
   const wanted = useRef(new Map<number, string>());
+  const thumbCanvases = useRef(new Map<number, HTMLCanvasElement>());
+  const thumbsAsked = useRef(new Set<number>());
+  const [thumbNear, setThumbNear] = useState(new Set<number>());
+  const thumbObserver = useRef<IntersectionObserver | null>(null);
+  const observeThumb = (b: HTMLButtonElement | null) => {
+    if (!b) return;
+    thumbObserver.current ??= new IntersectionObserver(
+      (entries) =>
+        setThumbNear((old) => {
+          const next = new Set(old);
+          for (const e of entries) if (e.isIntersecting) next.add(+(e.target as HTMLElement).dataset.page!);
+          return next.size === old.size ? old : next;
+        }),
+      { root: b.closest(".rail"), rootMargin: "300px 0px" },
+    );
+    thumbObserver.current.observe(b);
+  };
   const pending = useRef(new Map<number, (r: { error?: string }) => void>());
   const nextId = useRef(0);
   const post = (msg: WorkerIn, transfer: Transferable[] = []) => worker.current?.postMessage(msg, { transfer });
@@ -256,6 +295,15 @@ export default function App() {
         return;
       }
       if (data.error) console.warn(`Preview of page ${data.page + 1} failed:`, data.error);
+      if (data.key.startsWith("t|")) {
+        const thumb = thumbCanvases.current.get(data.page);
+        if (data.bitmap && thumb) {
+          thumb.width = data.bitmap.width;
+          thumb.height = data.bitmap.height;
+          thumb.getContext("2d")!.drawImage(data.bitmap, 0, 0);
+        }
+        return data.bitmap?.close();
+      }
       const canvas = canvases.current.get(data.page);
       if (data.bitmap && canvas && wanted.current.get(data.page) === data.key) {
         canvas.width = data.bitmap.width;
@@ -269,7 +317,7 @@ export default function App() {
   }, []);
   // Moved images need their pixels; the worker decodes each one the first time it's asked (null = on its way).
   const imageUrls = useRef(new Map<string, string | null>());
-  const [, imageLoaded] = useState(0);
+  const [imageVersion, imageLoaded] = useState(0);
   const imageUrl = (img: NonNullable<El["image"]>) => {
     const key = `${img.page}:${img.index}`;
     const known = imageUrls.current.get(key);
@@ -298,6 +346,7 @@ export default function App() {
 
   // `touch` groups rapid edits (typing, dragging) into one undo step.
   const commit = (next: El[], touch = "") => {
+    future.current = [];
     if (!touch || touch !== lastTouch.current) {
       past.current.push(elsRef.current);
       if (past.current.length > 300) past.current.shift();
@@ -311,9 +360,18 @@ export default function App() {
   const undo = () => {
     const prev = past.current.pop();
     if (!prev) return;
+    future.current.push(elsRef.current);
     lastTouch.current = "";
     elsRef.current = prev;
     setEls(prev);
+  };
+  const redo = () => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(elsRef.current);
+    lastTouch.current = "";
+    elsRef.current = next;
+    setEls(next);
   };
   // Copies are new content: no original to remove, drawn fresh on save.
   const addCopies = (src: El[], dx: number, dy: number, page?: number) => {
@@ -350,12 +408,19 @@ export default function App() {
     clip.current = null; // copied images point into the old file
     wanted.current.clear();
     for (const c of canvases.current.values()) c.width = 0;
+    thumbsAsked.current.clear();
+    for (const c of thumbCanvases.current.values()) c.width = 0;
+    setThumbNear(new Set());
+    // A new observer re-reports every slot as visible; the old one would stay silent for slots it already saw.
+    thumbObserver.current?.disconnect();
+    thumbObserver.current = null;
   };
 
   const closePdf = () => {
     if (unsaved() && !confirm("Close this PDF? Edits you haven't saved will be lost.")) return;
     clearPreviews();
     past.current = [];
+    future.current = [];
     elsRef.current = [];
     setFile(null);
     setPages([]);
@@ -375,6 +440,7 @@ export default function App() {
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
       past.current = [];
+      future.current = [];
       elsRef.current = list;
       saved.current = { els: list, hf };
       setFile({ name: f.name, handle });
@@ -556,6 +622,33 @@ export default function App() {
     return () => clearTimeout(t);
   }, [file, pages, byPage, scale, near]);
 
+  useEffect(() => {
+    if (!file || uiStyle !== "canvas") return;
+    for (const p of thumbNear)
+      if (!thumbsAsked.current.has(p)) {
+        thumbsAsked.current.add(p);
+        post({ type: "render", page: p, key: `t|${p}`, scale: 0.17 * devicePixelRatio, removed: { text: [], images: [] }, original: true });
+      }
+  }, [file, uiStyle, thumbNear]);
+
+  // Which page is at the top of the view, for the thumbnail rail.
+  const pagesRef = useRef<HTMLElement>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const onPagesScroll = (e: UIEvent<HTMLElement>) => {
+    const m = e.currentTarget, line = m.scrollTop + m.clientHeight / 3;
+    let cur = 0;
+    for (const d of m.querySelectorAll<HTMLElement>(".page")) if (d.offsetTop <= line) cur = +d.dataset.page!;
+    if (cur !== currentPage) setCurrentPage(cur);
+  };
+  const goToPage = (p: number) => pagesRef.current?.querySelector(`.page[data-page="${p}"]`)?.scrollIntoView({ block: "start" });
+  const fitWidth = () => {
+    const m = pagesRef.current;
+    if (!m || !pages.length) return;
+    const widest = Math.max(...pages.map((p) => p.w));
+    setScale(Math.max(0.5, Math.min(4, Math.floor(((m.clientWidth - 64) / widest) * 20) / 20)));
+  };
+  const zoomBy = (d: number) => setScale((s) => Math.max(0.5, Math.min(4, Math.round((s + d) * 100) / 100)));
+
   // Shared by the keyboard shortcuts and the context menu.
   type At = { page: number; x: number; y: number };
   const copySel = (cut = false) => {
@@ -616,8 +709,9 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        if (!isTyping(e.target)) (e.preventDefault(), undo());
+      const z = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (z === "z" || z === "y")) {
+        if (!isTyping(e.target)) (e.preventDefault(), z === "y" || e.shiftKey ? redo() : undo());
         return;
       }
       if (isTyping(e.target)) return;
@@ -711,7 +805,9 @@ export default function App() {
       ? { dx: rawX, dy: rawY, guides: {} as Guides }
       : whole
         ? { dx: Math.round(rawX), dy: Math.round(rawY), guides: {} as Guides }
-        : snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w);
+        : snapOn === "1"
+          ? snap(d.box, d.others, rawX, rawY, 5 / scale, pages[d.page].w)
+          : { dx: rawX, dy: rawY, guides: {} as Guides };
     const area = inside(d.page);
     const [dx, dy] = area ? confine(d.box, s.dx, s.dy, area) : [s.dx, s.dy];
     // A guide only means something if the margin didn't overrule it.
@@ -783,12 +879,17 @@ export default function App() {
     setBand(null);
   };
 
-  const hfEls = headerFooterEls(hf, pages);
+  const hfEls = useMemo(() => headerFooterEls(hf, pages), [hf, pages]);
+  const hfByPage = useMemo(() => {
+    const m = new Map<number, El[]>();
+    for (const e of hfEls) (m.get(e.page) ?? m.set(e.page, []).get(e.page)!).push(e);
+    return m;
+  }, [hfEls]);
 
   const selSet = new Set(sel);
   const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
   // Selecting text brings its settings into view.
-  useEffect(() => void (sel.length && setTab("edit")), [sel.length > 0]);
+  useEffect(() => void (sel.length && (setTab("edit"), setPanelOpen(true))), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
   const selText = selected.filter((e) => !e.image), textIds = selText.map((e) => e.id);
   const shared = <K extends keyof El>(k: K) => (selText.every((e) => e[k] === selText[0][k]) ? selText[0]?.[k] : undefined);
@@ -845,101 +946,47 @@ export default function App() {
     return node;
   };
 
-  return (
-    <div
-      className={`app side-${side}`}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        // Handles must be requested before the drop event ends.
-        const handles = [...e.dataTransfer.items].map((i) => (i as any).getAsFileSystemHandle?.());
-        openFiles(e.dataTransfer.files, handles);
-      }}
-    >
-      <header className="toolbar">
-        <button className="btn primary" onClick={pickPdf}>Open PDF</button>
-        <input ref={pdfInput} type="file" accept=".pdf" hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
-        <button className={adding ? "btn on" : "btn"} disabled={!file} onClick={() => setAdding(!adding)}>
-          {adding ? "Click the page…" : "Add text"}
-        </button>
-        <button className="btn" disabled={!past.current.length} onClick={undo}>Undo</button>
-        <span className="zoom">
-          <button className="btn" onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}>−</button>
-          {Math.round(scale * 100)}%
-          <button className="btn" onClick={() => setScale((s) => Math.min(4, s + 0.25))}>+</button>
-        </span>
-        <span className="grow">{file?.name}</span>
-        {file && <button className="btn" onClick={closePdf}>Close</button>}
-        <IconButton
-          label={side === "right" ? "Move sidebar to the left" : "Move sidebar to the right"}
-          onClick={() => setSide(side === "right" ? "left" : "right")}
-        >
-          <rect x="3" y="4" width="18" height="16" rx="2" />
-          <path d={side === "right" ? "M9 4v16" : "M15 4v16"} />
-        </IconButton>
-        <IconButton
-          label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        >
-          {theme === "dark" ? (
-            <>
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-            </>
-          ) : (
-            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
-          )}
-        </IconButton>
-        <button className="btn primary" disabled={!file} onClick={save}>Save edited PDF</button>
-      </header>
-
-      <main className="pages" onPointerDown={() => adding || setSel([])}>
-        {!file && (
-          <div className="empty">
-            <p>Open a PDF or drop one here.</p>
-            <p className="muted">Everything stays on this computer. Nothing is uploaded.</p>
-            {recent.length > 0 && (
-              <section className="recent" aria-label="Recently opened">
-                <h2>Recently opened</h2>
-                <ul>
-                  {recent.map((r) => (
-                    <li key={r.name}>
-                      <button className="recent-row" onClick={() => reopen(r)}>
-                        <span className="recent-name">{r.name}</span>
-                        <span className="muted">
-                          {openedAt(r.openedAt)}
-                          {!r.handle && " · opens the file picker"}
-                        </span>
-                      </button>
-                      <button className="recent-x" aria-label={`Remove ${r.name} from recent files`} title="Remove from list"
-                        onClick={() => forget(r.name)}>
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-          </div>
-        )}
-        {rotated && <div className="warn">This PDF has rotated pages. Edits on those pages will land in the wrong place.</div>}
-        {pages.map((pg, p) => (
+  // Page handlers go through a ref too, so a reused page view never acts on stale state.
+  const pageLive = useRef({ down: onPageDown, move: onPageMove, up: onPageUp, menu: (_e: RMouseEvent<HTMLDivElement>, _p: number) => {} });
+  pageLive.current = {
+    down: onPageDown, move: onPageMove, up: onPageUp,
+    menu: (e, p) => {
+      e.preventDefault();
+      const id = (e.target as HTMLElement).closest<HTMLElement>("[data-id]")?.dataset.id;
+      setSel(id ? (sel.includes(id) ? sel : [id]) : []);
+      const r = e.currentTarget.getBoundingClientRect();
+      setMenu({ page: p, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, left: e.clientX, top: e.clientY });
+    },
+  };
+  const pageOn = useMemo(() => ({
+    down: (e: RPointerEvent<HTMLDivElement>, p: number) => pageLive.current.down(e, p),
+    move: (e: RPointerEvent<HTMLDivElement>) => pageLive.current.move(e),
+    up: () => pageLive.current.up(),
+    menu: (e: RMouseEvent<HTMLDivElement>, p: number) => pageLive.current.menu(e, p),
+  }), []);
+  // Selection signature per page: a page's view only changes when selection on that page changes.
+  const selByPage = new Map<number, string>();
+  for (const id of sel) { const e = elById.get(id); if (e) selByPage.set(e.page, (selByPage.get(e.page) ?? "") + id + ","); }
+  const pageViews = useRef(new Map<number, { deps: unknown[]; node: ReactElement }>());
+  const pageView = (pg: PageInfo, p: number) => {
+    const isNear = near.has(p);
+    const deps = [
+      pg, scale, adding, isNear, isNear && byPage.get(p), margin, band?.page === p && band, guides?.page === p && guides,
+      isNear && hfByPage.get(p), isNear && (selByPage.get(p) ?? "") + (one?.page === p ? one.id : ""), fonts, imageVersion,
+    ];
+    const hit = pageViews.current.get(p);
+    if (hit && hit.deps.every((d, i) => d === deps[i])) return hit.node;
+    const node = (
           <div
             key={p}
             ref={observePage}
             data-page={p}
             className={adding ? "page adding" : "page"}
             style={{ width: pg.w * scale, height: pg.h * scale }}
-            onPointerDown={(e) => (e.stopPropagation(), onPageDown(e, p))}
-            onPointerMove={onPageMove}
-            onPointerUp={onPageUp}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              const id = (e.target as HTMLElement).closest<HTMLElement>("[data-id]")?.dataset.id;
-              setSel(id ? (sel.includes(id) ? sel : [id]) : []);
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenu({ page: p, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, left: e.clientX, top: e.clientY });
-            }}
+            onPointerDown={(e) => (e.stopPropagation(), pageOn.down(e, p))}
+            onPointerMove={pageOn.move}
+            onPointerUp={pageOn.up}
+            onContextMenu={(e) => pageOn.menu(e, p)}
           >
             <canvas ref={(c) => void (c ? canvases.current.set(p, c) : canvases.current.delete(p))} />
             {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
@@ -952,100 +999,69 @@ export default function App() {
             {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
             {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
             {/* images first, so text drawn over them stays clickable */}
-            {near.has(p) && (byPage.get(p) ?? []).filter((el) => !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map(viewOf)}
-            {near.has(p) && hfEls.filter((el) => el.page === p).map((el) => (
+            {isNear && (byPage.get(p) ?? []).filter((el) => !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map(viewOf)}
+            {isNear && (hfByPage.get(p) ?? []).map((el) => (
               <div key={el.id} className="el drawn hf" style={drawnStyle(el, scale)}>{el.text}</div>
             ))}
           </div>
-        ))}
-      </main>
+    );
+    pageViews.current.set(p, { deps, node });
+    return node;
+  };
 
-      {menu && (() => {
-        const has = selected.length > 0;
-        const at = { page: menu.page, x: menu.x, y: menu.y };
-        const pasteHere = () =>
-          clip.current
-            ? pasteCopied(at)
-            : navigator.clipboard?.readText().then((t) => (t.trim() ? pasteText(t, at) : Promise.reject()))
-                .catch(() => setReport({ ok: false, lines: ["Nothing to paste yet. Copy something first."] }));
-        const items: ([string, string, () => unknown, boolean] | null)[] = [
-          ["Cut", "Ctrl+X", () => copySel(true), has],
-          ["Copy", "Ctrl+C", () => copySel(), has],
-          ["Paste here", "Ctrl+V", pasteHere, true],
-          ["Duplicate", "Ctrl+D", duplicate, has],
-          ["Delete", "Del", () => remove(sel), has],
-          null,
-          ["Merge into one text box", "", mergeSel, selected.filter((e) => !e.image).length > 1],
-          ["Reset to original", "", resetSel, selected.some((e) => e.orig && isDirty(e))],
-          ["Select all", "Ctrl+A", selectAll, true],
-          ["Add text here", "", () => addTextAt(at), true],
-        ];
-        const close = () => setMenu(null);
-        const onKeys = (e: RKeyboardEvent) => {
-          e.stopPropagation();
-          const btns = [...menuRef.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
-          const i = btns.indexOf(document.activeElement as HTMLElement);
-          if (e.key === "Escape" || e.key === "Tab") (e.preventDefault(), close());
-          if (e.key === "ArrowDown") (e.preventDefault(), btns[(i + 1) % btns.length]?.focus());
-          if (e.key === "ArrowUp") (e.preventDefault(), btns[(i - 1 + btns.length) % btns.length]?.focus());
-        };
-        return (
-          <div className="menu-backdrop" onPointerDown={close} onWheel={close} onContextMenu={(e) => (e.preventDefault(), close())}>
-            <div
-              ref={menuRef}
-              role="menu"
-              className="menu"
-              // keep it on screen: ~31px per item
-              style={{ left: Math.min(menu.left, innerWidth - 232), top: Math.min(menu.top, innerHeight - items.length * 31 - 12) }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onKeyDown={onKeys}
-            >
-              {items.map((it, i) =>
-                it ? (
-                  <button key={it[0]} role="menuitem" disabled={!it[3]} onClick={() => (close(), it[2]())}>
-                    <span>{it[0]}</span>
-                    {it[1] && <kbd>{it[1]}</kbd>}
-                  </button>
-                ) : (
-                  <hr key={i} />
-                ),
-              )}
-            </div>
-          </div>
-        );
-      })()}
+  const prefs: Prefs = { theme: themePref, uiStyle, accent, side, snap: snapOn, marginOn, marginPt };
+  const setPref = (k: keyof Prefs, v: string) =>
+    ({ theme: setThemePref, uiStyle: setUiStyle, accent: setAccent, side: setSide, snap: setSnapOn, marginOn: setMarginOn, marginPt: setMarginPt })[k](v);
+  const canvasStyle = uiStyle === "canvas";
+  const edited = !!file && unsaved();
+  const editedPages = useMemo(() => new Set(els.filter(isDirty).map((e) => e.page)), [els]);
 
-      {report && (
-        <div className={`toast ${report.busy ? "" : report.ok ? "ok" : "bad"}`} role={report.ok ? "status" : "alert"}>
-          {report.busy && <span className="spinner" aria-hidden="true" />}
-          <div className="toast-body">{report.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
-          {!report.busy && <button className="link" onClick={() => setReport(null)}>Dismiss</button>}
-        </div>
+  const themeTool = (
+    <Tool icon={theme === "dark" ? "sun" : "moon"} label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+      onClick={() => setThemePref(theme === "dark" ? "light" : "dark")} />
+  );
+  const settingsTool = <Tool icon="settings" label="Settings" onClick={() => setSettingsOpen(true)} />;
+  const saveButton = file && <button className="btn primary" onClick={save} title="Save a copy with your edits">Save</button>;
+  const history = (
+    <>
+      <Tool icon="undo" label="Undo" shortcut="Ctrl+Z" onClick={undo} disabled={!past.current.length} />
+      <Tool icon="redo" label="Redo" shortcut="Ctrl+Y" onClick={redo} disabled={!future.current.length} />
+    </>
+  );
+  const toolButtons = (
+    <>
+      <Tool icon="pointer" label="Select" shortcut="Esc" active={!adding} onClick={() => setAdding(false)} />
+      <Tool icon="text" label="Add text" active={adding} onClick={() => setAdding(true)} disabled={!file} />
+    </>
+  );
+  const zoomControls = (
+    <>
+      <Tool icon="minus" label="Zoom out" onClick={() => zoomBy(-0.25)} disabled={!file} />
+      <span className="zoom-level" aria-label="Zoom level">{Math.round(scale * 100)}%</span>
+      <Tool icon="plus" label="Zoom in" onClick={() => zoomBy(0.25)} disabled={!file} />
+      <Tool icon="fit" label="Fit page width" onClick={fitWidth} disabled={!file} />
+    </>
+  );
+  const editedBadge = edited && <span className="edited" title="Edits not saved yet"><span className="dot" />Edited</span>;
+
+  const panel = (
+    <>
+      {file && (
+        <Segmented role="tab" label="Panel" value={tab as (typeof TABS)[number][0]} options={TABS} onChange={setTab} />
       )}
-
-      <aside className="side">
-        {file && (
-          <div className="tabs" role="tablist">
-            {TABS.map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "tab on" : "tab"} onClick={() => setTab(id)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {tab === "edit" && (
           <>
           {!selected.length && file && (
-            <p className="muted">
-              Click text or an image to select it, then drag to move. Drag across empty space to select a group,
-              Shift or Ctrl+click to add or remove, Ctrl+A to select everything; the selection moves together.
-              While dragging, things snap into line; hold Shift to move freely or Ctrl to move in whole points.
-              Double-click text to reword. Arrow keys nudge (Shift for 10pt), Delete removes, Ctrl+Z undoes.
-              Ctrl+C, X and V copy, cut and paste; Ctrl+D duplicates. Right-click for all of these.
-              Drag the handle on a selected text's right edge to make it wrap; merge several lines into one box to
-              reflow a paragraph.
-            </p>
+            <section>
+              <h2>Nothing selected</h2>
+              <ul className="hints">
+                <li>Click text or an image to select it, then drag to move.</li>
+                <li>Drag across empty space to select several.</li>
+                <li><kbd>Shift</kbd> while dragging moves freely; <kbd>Ctrl</kbd> moves in whole points.</li>
+                <li>Double-click text to edit it. Drag its right-edge handle to make it wrap.</li>
+                <li>Right-click for copy, paste, duplicate, merge and more.</li>
+              </ul>
+            </section>
           )}
 
           {selected.length > 0 && (
@@ -1113,7 +1129,7 @@ export default function App() {
                 {selected.some((e) => e.orig && isDirty(e)) && (
                   <button className="btn" onClick={resetSel}>Reset to original</button>
                 )}
-                <button className="btn danger" onClick={() => remove(sel)}>Delete</button>
+                <button className="btn ghost danger" onClick={() => remove(sel)}>Delete</button>
               </div>
             </section>
           )}
@@ -1218,28 +1234,6 @@ export default function App() {
           <>
           {file && (
             <section>
-              <h2>Margins</h2>
-              <label className="check">
-                <input type="checkbox" checked={marginOn === "1"} onChange={(e) => setMarginOn(e.target.checked ? "1" : "0")} />
-                Keep everything inside the margin
-              </label>
-              <div className="grid">
-                <label>
-                  Margin (pt)
-                  <input type="number" step="1" min="0" value={marginPt} onChange={(e) => setMarginPt(e.target.value)} />
-                </label>
-                <p className="muted fill">
-                  = {((+marginPt || 0) / 72).toFixed(2)} in, {(((+marginPt || 0) / 72) * 25.4).toFixed(1)} mm
-                </p>
-              </div>
-              <p className="muted">
-                Dragging, arrow keys and new text stop at the dashed line. Typing an exact X or Y still goes anywhere.
-              </p>
-            </section>
-          )}
-
-          {file && (
-            <section>
               <h2>Header &amp; footer</h2>
               {(["header", "footer"] as const).map((row) => (
                 <div key={row} className="grid three">
@@ -1284,9 +1278,245 @@ export default function App() {
               <p className="muted">Shown on every page. Use {"{page}"} and {"{pages}"} for page numbers, e.g. Page {"{page}"} of {"{pages}"}.</p>
             </section>
           )}
+          {file && (
+            <section>
+              <h2>Margins</h2>
+              <p className="muted">
+                {margin === null ? "Not enforced." : `Items are kept ${margin} pt from the edge.`}{" "}
+                <button className="link" onClick={() => setSettingsOpen(true)}>Change in Settings</button>
+              </p>
+            </section>
+          )}
           </>
         )}
-      </aside>
+    </>
+  );
+
+  return (
+    <div
+      // Plain classes, not CSS :has(), which Chrome re-checks on every keystroke in a large document.
+      className={`app ${canvasStyle ? "style-canvas" : "style-toolbar"} side-${side} ${file ? "has-file" : "no-file"}${canvasStyle && file && panelOpen ? " panel-open" : ""}`}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        // Handles must be requested before the drop event ends.
+        const handles = [...e.dataTransfer.items].map((i) => (i as any).getAsFileSystemHandle?.());
+        openFiles(e.dataTransfer.files, handles);
+      }}
+    >
+      <input ref={pdfInput} type="file" accept=".pdf" hidden onChange={(e) => (openFiles(e.target.files), (e.target.value = ""))} />
+      {canvasStyle ? (
+        <header className="header slim">
+          <div className="doc">
+            <span className="brand">Quick PDF</span>
+            {file && (
+              <>
+                <span className="vsep" />
+                <button className="file-menu" aria-haspopup="menu" aria-expanded={fileMenu} onClick={() => setFileMenu(!fileMenu)}>
+                  {file.name}<Icon name="chevron" size={14} />
+                </button>
+                {edited && <span className="dot" title="Edits not saved yet" />}
+              </>
+            )}
+          </div>
+          <div className="center">
+            {file && (
+              <>
+                <Group label="Tools">{toolButtons}</Group>
+                <Group label="History" plain>{history}</Group>
+              </>
+            )}
+          </div>
+          <div className="end">
+            <Group label="View" plain>
+              {file && (
+                <Tool icon={side === "left" ? "panelLeft" : "panelRight"} label={panelOpen ? "Hide the panel" : "Show the panel"}
+                  active={panelOpen} onClick={() => setPanelOpen(!panelOpen)} />
+              )}
+              {themeTool}
+              {settingsTool}
+            </Group>
+            {saveButton}
+          </div>
+          {fileMenu && (
+            <div className="menu-backdrop" onPointerDown={() => setFileMenu(false)}>
+              <div className="menu file" role="menu" onPointerDown={(e) => e.stopPropagation()}>
+                <button role="menuitem" onClick={() => (setFileMenu(false), pickPdf())}><span>Open PDF…</span></button>
+                <button role="menuitem" onClick={() => (setFileMenu(false), save())}><span>Save</span></button>
+                <hr />
+                <button role="menuitem" onClick={() => (setFileMenu(false), closePdf())}><span>Close</span></button>
+              </div>
+            </div>
+          )}
+        </header>
+      ) : (
+        <header className="header">
+          <div className="doc">
+            <span className="brand">Quick PDF</span>
+            {file && (
+              <>
+                <span className="vsep" />
+                <span className="doc-name">{file.name}</span>
+                {editedBadge}
+              </>
+            )}
+          </div>
+          {file && (
+            <div className="tools">
+              <Group label="File">
+                <Tool icon="open" label="Open PDF" onClick={pickPdf} />
+                <Tool icon="close" label="Close PDF" onClick={closePdf} />
+              </Group>
+              <Group label="History">{history}</Group>
+              <Group label="Tools">{toolButtons}</Group>
+              <Group label="Zoom">{zoomControls}</Group>
+            </div>
+          )}
+          <div className="spacer" />
+          <Group label="View">
+            {file && (
+              <Tool icon={side === "right" ? "panelRight" : "panelLeft"}
+                label={side === "right" ? "Move the sidebar to the left" : "Move the sidebar to the right"}
+                onClick={() => setSide(side === "right" ? "left" : "right")} />
+            )}
+            {themeTool}
+            {settingsTool}
+          </Group>
+          {saveButton}
+        </header>
+      )}
+
+      {canvasStyle && file && (
+        <nav className="rail" aria-label="Pages">
+          <p className="rail-title">Pages</p>
+          {pages.map((pg, p) => (
+            <button key={p} ref={observeThumb} data-page={p} className={p === currentPage ? "thumb on" : "thumb"}
+              aria-label={`Page ${p + 1}${editedPages.has(p) ? ", edited" : ""}`} aria-current={p === currentPage ? "page" : undefined}
+              onClick={() => goToPage(p)}>
+              <span className="thumb-page" style={{ aspectRatio: `${pg.w} / ${pg.h}` }}>
+                <canvas ref={(c) => void (c ? thumbCanvases.current.set(p, c) : thumbCanvases.current.delete(p))} />
+              </span>
+              <span className="thumb-label">{p + 1}{editedPages.has(p) && <span className="dot" />}</span>
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <div className="canvas-area">
+      <main className="pages" ref={pagesRef} onScroll={onPagesScroll} onPointerDown={() => adding || setSel([])}>
+        {!file && (
+          <div className="start">
+            <div className="start-intro">
+              <h1>Open a PDF</h1>
+              <p>Everything stays on this computer. Nothing is uploaded.</p>
+            </div>
+            <div className="drop">
+              <Icon name="open" size={20} />
+              <span>Drop a PDF anywhere in the window, or</span>
+              <button className="btn primary" onClick={pickPdf}>Open PDF</button>
+            </div>
+            {recent.length > 0 && (
+              <section className="recent" aria-label="Recently opened">
+                <h2>Recently opened</h2>
+                <ul>
+                  {recent.map((r) => (
+                    <li key={r.name}>
+                      <button className="recent-row" onClick={() => reopen(r)}>
+                        <Icon name="file" />
+                        <span className="recent-text">
+                          <span className="recent-name">{r.name}</span>
+                          <span className="recent-date">
+                            {openedAt(r.openedAt)}
+                            {!r.handle && " · opens the file picker"}
+                          </span>
+                        </span>
+                      </button>
+                      <button className="recent-x" aria-label={`Remove ${r.name} from recent files`} title="Remove from list"
+                        onClick={() => forget(r.name)}>
+                        <Icon name="close" size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
+        {rotated && <div className="warn">This PDF has rotated pages. Edits on those pages will land in the wrong place.</div>}
+        {pages.map(pageView)}
+      </main>
+      {canvasStyle && file && <div className="zoom-float" role="group" aria-label="Zoom">{zoomControls}</div>}
+      {canvasStyle && file && panelOpen && <aside className="side floating" aria-label="Inspector">{panel}</aside>}
+      </div>
+
+      {!canvasStyle && file && <aside className="side">{panel}</aside>}
+      {menu && (() => {
+        const has = selected.length > 0;
+        const at = { page: menu.page, x: menu.x, y: menu.y };
+        const pasteHere = () =>
+          clip.current
+            ? pasteCopied(at)
+            : navigator.clipboard?.readText().then((t) => (t.trim() ? pasteText(t, at) : Promise.reject()))
+                .catch(() => setReport({ ok: false, lines: ["Nothing to paste yet. Copy something first."] }));
+        const items: ([string, string, () => unknown, boolean] | null)[] = [
+          ["Cut", "Ctrl+X", () => copySel(true), has],
+          ["Copy", "Ctrl+C", () => copySel(), has],
+          ["Paste here", "Ctrl+V", pasteHere, true],
+          ["Duplicate", "Ctrl+D", duplicate, has],
+          null,
+          ["Merge into one text box", "", mergeSel, selected.filter((e) => !e.image).length > 1],
+          ["Reset to original", "", resetSel, selected.some((e) => e.orig && isDirty(e))],
+          null,
+          ["Select all", "Ctrl+A", selectAll, true],
+          ["Add text here", "", () => addTextAt(at), true],
+          null,
+          ["Delete", "Del", () => remove(sel), has],
+        ];
+        const close = () => setMenu(null);
+        const onKeys = (e: RKeyboardEvent) => {
+          e.stopPropagation();
+          const btns = [...menuRef.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+          const i = btns.indexOf(document.activeElement as HTMLElement);
+          if (e.key === "Escape" || e.key === "Tab") (e.preventDefault(), close());
+          if (e.key === "ArrowDown") (e.preventDefault(), btns[(i + 1) % btns.length]?.focus());
+          if (e.key === "ArrowUp") (e.preventDefault(), btns[(i - 1 + btns.length) % btns.length]?.focus());
+        };
+        return (
+          <div className="menu-backdrop" onPointerDown={close} onWheel={close} onContextMenu={(e) => (e.preventDefault(), close())}>
+            <div
+              ref={menuRef}
+              role="menu"
+              className="menu"
+              // keep it on screen: ~31px per item
+              style={{ left: Math.min(menu.left, innerWidth - 244), top: Math.min(menu.top, innerHeight - items.length * 31 - 12) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={onKeys}
+            >
+              {items.map((it, i) =>
+                it ? (
+                  <button key={it[0]} role="menuitem" disabled={!it[3]} className={it[0] === "Delete" ? "danger" : undefined}
+                    onClick={() => (close(), it[2]())}>
+                    <span>{it[0]}</span>
+                    {it[1] && <kbd>{it[1]}</kbd>}
+                  </button>
+                ) : (
+                  <hr key={i} />
+                ),
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {report && (
+        <div className={`toast ${report.busy ? "" : report.ok ? "ok" : "bad"}`} role={report.ok ? "status" : "alert"}>
+          {report.busy ? <span className="spinner" aria-hidden="true" /> : <span className="toast-icon"><Icon name={report.ok ? "check" : "alert"} /></span>}
+          <div className="toast-body">{report.lines.map((l, i) => <p key={i}>{l}</p>)}</div>
+          {!report.busy && <button className="btn ghost small" onClick={() => setReport(null)}>Dismiss</button>}
+        </div>
+      )}
+
+      {settingsOpen && <Settings prefs={prefs} set={setPref} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

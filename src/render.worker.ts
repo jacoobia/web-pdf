@@ -3,7 +3,7 @@ import type { El, PageInfo, Removed } from "./pdf";
 
 export type WorkerIn =
   | { type: "open"; id: number; bytes: Uint8Array }
-  | { type: "render"; page: number; key: string; scale: number; removed: Removed }
+  | { type: "render"; page: number; key: string; scale: number; removed: Removed; original?: boolean }
   | { type: "image"; id: number; page: number; index: number }
   | { type: "export"; id: number; els: El[]; fonts: Map<string, Uint8Array> };
 
@@ -33,7 +33,7 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
     }
     if (!bytes || !preview) throw new Error("No PDF is open.");
     if (data.type === "render") {
-      const { w, h, rgba } = preview.render(data.page, data.scale, data.removed);
+      const { w, h, rgba } = data.original ? preview.renderOriginal(data.page, data.scale) : preview.render(data.page, data.scale, data.removed);
       const bitmap = await createImageBitmap(new ImageData(rgba, w, h));
       return self.postMessage({ type: "render", page: data.page, key: data.key, bitmap }, { transfer: [bitmap] });
     }

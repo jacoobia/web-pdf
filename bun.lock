@@ -5,6 +5,7 @@
     "": {
       "name": "pdf-editor",
       "dependencies": {
+        "@fontsource/ibm-plex-sans": "5.2.5",
         "@pdf-lib/fontkit": "^1.1.1",
         "mupdf": "^1.28.1",
         "pdf-lib": "^1.17.1",
@@ -21,6 +22,8 @@
     },
   },
   "packages": {
+    "@fontsource/ibm-plex-sans": ["@fontsource/ibm-plex-sans@5.2.5", "", {}, "sha512-W1kkC/fpDuoKQ5pNSQt/Bg0rpV9AATreA9ABwZf678AlwSCY2TQBT1YwAxxB65E9jcT/ysDrU1sGVNUyWCBXRw=="],
+
     "@oxc-project/types": ["@oxc-project/types@0.155.0", "", {}, "sha512-SeE8JPwW1xs1tHeNycjUtUBdhorRa8o4jlvjwk49R7/Z291i+4DQa7JJIgOm/TaYQZx+QrPQbVJ/9c8dMIZN8Q=="],
 
     "@pdf-lib/fontkit": ["@pdf-lib/fontkit@1.1.1", "", { "dependencies": { "pako": "^1.0.6" } }, "sha512-KjMd7grNapIWS/Dm0gvfHEilSyAmeLvrEGVcqLGi0VYebuqqzTbgF29efCx7tvx+IEbG3zQciRSWl3GkUSvjZg=="],

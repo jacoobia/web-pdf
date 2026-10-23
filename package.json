@@ -8,6 +8,7 @@
     "check": "bun scripts/check.ts"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans": "5.2.5",
     "@pdf-lib/fontkit": "^1.1.1",
     "mupdf": "^1.28.1",
     "pdf-lib": "^1.17.1",

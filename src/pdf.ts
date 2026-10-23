@@ -368,6 +368,13 @@ export class Previewer {
     p.destroy();
     return out;
   }
+  /** The untouched page, for thumbnails: never disturbs the removals applied for the main preview. */
+  renderOriginal(page: number, scale: number) {
+    const p = (this.source ??= open(this.bytes)).loadPage(page);
+    const out = pixels(p, scale);
+    p.destroy();
+    return out;
+  }
   imagePng(page: number, index: number) {
     return imagePng((this.source ??= open(this.bytes)), page, index);
   }
