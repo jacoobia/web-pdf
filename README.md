@@ -1,6 +1,14 @@
-# Web PDF
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/header-dark.png">
+  <img alt="Web PDF" src="docs/images/header-light.png">
+</picture>
 
 A PDF editor that runs in your browser. Files are edited locally and never uploaded.
+
+<p>
+  <img alt="Editing a CV in the dark theme, with page thumbnails and the edit panel" src="docs/images/editor-dark.png" width="72%">
+  <img alt="The editor on a phone, with the edit panel open as a sheet" src="docs/images/editor-phone.png" width="25%">
+</p>
 
 ## Getting started
 
