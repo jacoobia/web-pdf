@@ -46,7 +46,8 @@ type Recent = { name: string; openedAt: number; handle: boolean; copy?: boolean 
 const COPY_LIMIT = 50 * 1024 * 1024; // bigger PDFs aren't copied, to keep browser storage in check
 const readRecent = (): Recent[] => {
   try {
-    return JSON.parse(localStorage.getItem("recent") ?? "[]");
+    const list: Recent[] = JSON.parse(localStorage.getItem("recent") ?? "[]");
+    return list.filter((r) => typeof r?.name === "string" && r.name.trim()); // drop anything saved without a name
   } catch {
     return [];
   }
@@ -162,6 +163,7 @@ export default function App() {
     } catch {}
   };
   const remember = (name: string, handle?: FileSystemFileHandle, file?: File) => {
+    if (!name?.trim()) return; // nothing to show or find it by
     const old = recent.find((r) => r.name === name);
     const copy = !!file && file.size <= COPY_LIMIT;
     const next = [{ name, openedAt: Date.now(), handle: !!handle || !!old?.handle, copy: copy || !!old?.copy }, ...recent.filter((r) => r !== old)];
