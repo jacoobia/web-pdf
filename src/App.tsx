@@ -6,7 +6,7 @@ import {
 } from "./pdf";
 import type { Replies, WorkerIn } from "./render.worker";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
-import { DEFAULT_PREFS, Group, Icon, Segmented, Settings, Tool, type Prefs } from "./ui";
+import { DEFAULT_PREFS, Group, Icon, Segmented, Settings, SourceLink, Tool, type Prefs } from "./ui";
 
 // Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
 const cssBaseline = (lineHeight: number) => 0.35 + lineHeight / 2;
@@ -1370,6 +1370,7 @@ export default function App() {
               )}
               {themeTool}
               {settingsTool}
+              <SourceLink />
             </Group>
             {saveButton}
           </div>
@@ -1416,6 +1417,7 @@ export default function App() {
             )}
             {themeTool}
             {settingsTool}
+            <SourceLink />
           </Group>
           {saveButton}
         </header>

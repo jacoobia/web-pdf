@@ -1,5 +1,8 @@
 // Presentational pieces shared by the header, panels and Settings: icons, tool groups, segmented controls, switches.
-import { useEffect, useRef, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { version } from "../package.json";
+
+export const REPO_URL = "https://github.com/jacoobia/quick-pdf";
 
 const p = (d: string) => <path d={d} />;
 const ICONS = {
@@ -29,6 +32,20 @@ export const Icon = ({ name, size = 16 }: { name: IconName; size?: number }) => 
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     {ICONS[name]}
   </svg>
+);
+
+/** GitHub's mark, filled rather than stroked like the other icons. */
+export const GithubMark = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+  </svg>
+);
+
+/** The header link to the source code, which the AGPL asks every user be offered. */
+export const SourceLink = () => (
+  <a className="tool" href={REPO_URL} target="_blank" rel="noreferrer" aria-label="Source code on GitHub" title="Source code on GitHub">
+    <GithubMark />
+  </a>
 );
 
 /** An icon button. `active` marks a toggled tool; the shortcut goes in the tooltip. */
@@ -94,6 +111,7 @@ export function Settings({ prefs, set, onClose }: {
     if (e.shiftKey && document.activeElement === first) (e.preventDefault(), last.focus());
     else if (!e.shiftKey && document.activeElement === last) (e.preventDefault(), first.focus());
   };
+  const [section, setSection] = useState<"preferences" | "about">("preferences");
   const mm = ((+prefs.marginPt || 0) / 72) * 25.4;
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -102,6 +120,32 @@ export function Settings({ prefs, set, onClose }: {
           <h2 id="settings-title">Settings</h2>
           <Tool icon="close" label="Close settings" onClick={onClose} />
         </div>
+        <div className="dialog-tabs">
+          <Segmented role="tab" label="Settings section" value={section} onChange={setSection}
+            options={[["preferences", "Preferences"], ["about", "About"]]} />
+        </div>
+        {section === "about" ? (
+          <div className="dialog-body about">
+            <div className="about-title">
+              <h3>Web PDF</h3>
+              <span>Version {version}</span>
+            </div>
+            <p>I couldn't find a free, easy-to-use PDF editor online to edit my CV with, so I quickly vibe coded one.</p>
+            <p>Everything runs in your browser. Your PDFs are never uploaded anywhere.</p>
+            <p>It's open source under the AGPL-3.0 licence, so you can read, change and share the code.</p>
+            <a className="btn source-btn" href={REPO_URL} target="_blank" rel="noreferrer">
+              <GithubMark /> Source code on GitHub
+            </a>
+            <div className="credits-block">
+            <h4>Built with</h4>
+            <ul className="credits">
+              <li><a href="https://mupdf.com" target="_blank" rel="noreferrer">MuPDF</a> reads, renders and removes text (AGPL-3.0)</li>
+              <li><a href="https://pdf-lib.js.org" target="_blank" rel="noreferrer">pdf-lib</a> writes the new text and fonts (MIT)</li>
+              <li><a href="https://github.com/IBM/plex" target="_blank" rel="noreferrer">IBM Plex Sans</a> is the interface font (SIL Open Font License)</li>
+            </ul>
+            </div>
+          </div>
+        ) : (
         <div className="dialog-body">
           <section className="settings-section" aria-label="Appearance">
             <h3>Appearance</h3>
@@ -163,10 +207,13 @@ export function Settings({ prefs, set, onClose }: {
             </div>
           </section>
         </div>
+        )}
         <div className="dialog-foot">
-          <button className="btn ghost" onClick={() => (Object.keys(DEFAULT_PREFS) as (keyof Prefs)[]).forEach((k) => set(k, DEFAULT_PREFS[k]))}>
-            Reset to defaults
-          </button>
+          {section === "preferences" && (
+            <button className="btn ghost" onClick={() => (Object.keys(DEFAULT_PREFS) as (keyof Prefs)[]).forEach((k) => set(k, DEFAULT_PREFS[k]))}>
+              Reset to defaults
+            </button>
+          )}
           <button className="btn primary" onClick={onClose}>Done</button>
         </div>
       </div>

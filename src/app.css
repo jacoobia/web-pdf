@@ -285,6 +285,17 @@ kbd { font: 500 11px/1 "IBM Plex Sans", system-ui, sans-serif; padding: 2px 5px;
 }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 8px 24px; }
 .dialog-head h2 { font-size: 15px; font-weight: 600; }
+.dialog-tabs { padding: 4px 24px 0; }
+.about { gap: 12px; padding-top: 20px; line-height: 1.6; }
+.about-title { display: flex; align-items: baseline; gap: 10px; }
+.about-title h3 { font-size: 15px; font-weight: 600; }
+.about-title span { font-size: 12px; color: var(--muted); }
+.credits-block { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.about h4 { font-size: 12px; font-weight: 500; color: var(--muted); }
+.source-btn { align-self: flex-start; text-decoration: none; }
+.credits { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.credits a, .about p a { color: var(--accent-fg); }
+a.tool { color: var(--text); }
 .dialog-body { overflow: auto; padding: 4px 24px 24px; display: flex; flex-direction: column; }
 .settings-section { display: flex; flex-direction: column; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--border); }
 .settings-section:first-child { padding-top: 8px; }

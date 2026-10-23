@@ -1,5 +1,13 @@
 {
   "name": "web-pdf",
+  "version": "0.1.0",
+  "description": "A PDF editor that runs entirely in your browser.",
+  "license": "AGPL-3.0-or-later",
+  "author": "Jacob Hampton",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jacoobia/quick-pdf.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
