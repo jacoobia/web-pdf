@@ -1,4 +1,6 @@
+import { errorText } from "../lib/browser";
 import type { Editor } from "../lib/editor";
+import { openFeedback } from "../lib/feedback";
 import { Button, IconButton, IconLink } from "./ui";
 
 export const REPO_URL = "https://github.com/jacoobia/web-pdf";
@@ -52,6 +54,18 @@ export function ThemeToggle({ editor }: { editor: Editor }) {
     />
   );
 }
+
+export const FeedbackButton = ({ editor }: { editor: Editor }) => (
+  <IconButton
+    icon="feedback"
+    label="Send feedback"
+    onClick={() =>
+      openFeedback(REPO_URL.replace("https://github.com/", "")).catch((err) =>
+        editor.setReport({ ok: false, lines: [`Couldn't open feedback: ${errorText(err)}`] }),
+      )
+    }
+  />
+);
 
 export const SettingsButton = ({ editor }: { editor: Editor }) => (
   <IconButton icon="settings" label="Settings" onClick={() => editor.setSettingsOpen(true)} />

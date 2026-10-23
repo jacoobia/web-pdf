@@ -1,5 +1,6 @@
 import type { Editor } from "../lib/editor";
 import {
+  FeedbackButton,
   HistoryTools,
   ModeTools,
   PanelToggle,
@@ -27,7 +28,9 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
         {file && (
           <>
             <span className="vsep" />
-            <span className="doc-name">{file.name}</span>
+            <span className="doc-name" data-bugdrop-mask>
+              {file.name}
+            </span>
             {editor.edited && <Badge title="Edits not saved yet">Edited</Badge>}
           </>
         )}
@@ -64,6 +67,7 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
           )}
           <ThemeToggle editor={editor} />
           <SettingsButton editor={editor} />
+          <FeedbackButton editor={editor} />
           <SourceLink />
         </Group>
         <SaveButton editor={editor} />
@@ -84,6 +88,7 @@ function CanvasHeader({ editor }: { editor: Editor }) {
             <button
               type="button"
               className="file-menu"
+              data-bugdrop-mask
               aria-haspopup="menu"
               aria-expanded={fileMenu}
               onClick={() => setFileMenu(!fileMenu)}
@@ -110,6 +115,7 @@ function CanvasHeader({ editor }: { editor: Editor }) {
           {file && <PanelToggle editor={editor} />}
           <ThemeToggle editor={editor} />
           <SettingsButton editor={editor} />
+          <FeedbackButton editor={editor} />
           <SourceLink />
         </Group>
         <SaveButton editor={editor} />
