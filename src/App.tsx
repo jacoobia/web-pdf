@@ -1,9 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
-  STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
+  STANDARD_FONTS, compact, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
   isItalicName, LINE_HEIGHT, measure, pickFace, removedOn, wrapLines, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
+import type { WorkerIn } from "./render.worker";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
 
 // Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
@@ -205,9 +206,22 @@ export default function App() {
   const worker = useRef<Worker | null>(null);
   const canvases = useRef(new Map<number, HTMLCanvasElement>());
   const wanted = useRef(new Map<number, string>());
+  type Exported = { pdf?: Uint8Array; problems?: string[]; error?: string };
+  const exports = useRef(new Map<number, (r: Exported) => void>());
+  const post = (msg: WorkerIn) => worker.current?.postMessage(msg);
   useEffect(() => {
     const w = new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" });
-    w.onmessage = ({ data }: MessageEvent<{ page: number; key: string; bitmap?: ImageBitmap }>) => {
+    w.onerror = (e) => {
+      for (const done of exports.current.values()) done({ error: `The background worker failed: ${e.message}` });
+      exports.current.clear();
+    };
+    w.onmessage = ({ data }: MessageEvent<({ type: "render"; page: number; key: string; bitmap?: ImageBitmap; error?: string }) | ({ type: "export"; id: number } & Exported)>) => {
+      if (data.type === "export") {
+        exports.current.get(data.id)?.(data);
+        exports.current.delete(data.id);
+        return;
+      }
+      if (data.error) console.warn(`Preview of page ${data.page + 1} failed:`, data.error);
       const canvas = canvases.current.get(data.page);
       if (data.bitmap && canvas && wanted.current.get(data.page) === data.key) {
         canvas.width = data.bitmap.width;
@@ -313,7 +327,7 @@ export default function App() {
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
       clearPreviews();
-      worker.current?.postMessage({ bytes });
+      post({ type: "load", bytes });
       past.current = [];
       elsRef.current = list;
       saved.current = { els: list, hf };
@@ -441,10 +455,14 @@ export default function App() {
     }
     const name = target?.name ?? suggestedName;
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
-    await new Promise((r) => setTimeout(r, 30)); // let the toast paint before the export blocks the page
     try {
       const snapshot = { els: elsRef.current, hf };
-      const { pdf, problems } = await exportPdf(file.bytes, [...snapshot.els, ...hfEls], fonts);
+      // Built in the worker, so the page (and the spinner) keep going while it saves.
+      const { pdf, problems } = await new Promise<{ pdf: Uint8Array; problems: string[] }>((resolve, reject) => {
+        const id = exports.current.size + Date.now();
+        exports.current.set(id, (r) => (r.error ? reject(new Error(r.error)) : resolve(r as { pdf: Uint8Array; problems: string[] })));
+        post({ type: "export", id, els: [...snapshot.els, ...hfEls], fonts });
+      });
       if (target) {
         const out = await target.createWritable();
         await out.write(pdf as BufferSource);
@@ -484,7 +502,7 @@ export default function App() {
         const key = `${scale}|${JSON.stringify(removed)}`;
         if (wanted.current.get(p) === key) return;
         wanted.current.set(p, key);
-        worker.current?.postMessage({ page: p, key, scale: scale * devicePixelRatio, removed });
+        post({ type: "render", page: p, key, scale: scale * devicePixelRatio, removed });
       });
     }, 30);
     return () => clearTimeout(t);
