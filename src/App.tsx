@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent, type PointerEvent as RPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
   STANDARD_FONTS, compact, exportPdf, extract, familyOf, fontHelp, fontKey, headerFooterEls, isBoldName, isDirty,
-  isItalicName, LINE_HEIGHT, measure, pickFace, renderPage, wrapLines, type HeaderFooter,
+  isItalicName, LINE_HEIGHT, measure, pickFace, removedOn, wrapLines, type HeaderFooter,
   type El, type PageInfo,
 } from "./pdf";
 import { confine, snap, type Area, type Box, type Guides } from "./snap";
@@ -74,6 +74,73 @@ const openedAt = (t: number) =>
 
 type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
 
+const drawnStyle = (el: El, scale: number) => ({
+  left: el.x * scale,
+  top: (el.y + (el.ascent - cssBaseline(el.lineHeight ?? LINE_HEIGHT)) * el.size) * scale,
+  width: el.wrap ? el.wrap * scale : undefined,
+  lineHeight: el.lineHeight ?? LINE_HEIGHT,
+  fontSize: el.size * scale,
+  color: el.color,
+  transform: el.align === "center" ? "translateX(-50%)" : el.align === "right" ? "translateX(-100%)" : undefined,
+  ...cssFont(el.font),
+});
+
+// Same wrapping code and font metrics as the saved file, so the preview breaks lines where the PDF will.
+const shownText = (el: El, fonts: Map<string, Uint8Array>) =>
+  el.wrap ? wrapLines(el.text, el.wrap, (t) => measure(el.font, fonts)(t, el.size)).join("\n") : el.text;
+
+type ElHandlers = {
+  down(e: RPointerEvent, el: El): void;
+  move(e: RPointerEvent): void;
+  up(): void;
+  focusText(): void;
+  resizeStart(e: RPointerEvent): void;
+  resizeMove(e: RPointerEvent, el: El): void;
+  resizeEnd(): void;
+  unwrap(id: string): void;
+  pngUrl(png: Uint8Array): string;
+};
+
+/** One item on the page. Memoised: while dragging, only the items that actually moved re-render. */
+const ElView = memo(function ElView({ el, scale, selected, single, fonts, on }: {
+  el: El; scale: number; selected: boolean; single: boolean; fonts: Map<string, Uint8Array>; on: ElHandlers;
+}) {
+  const dirty = isDirty(el);
+  const r = el.orig?.rect;
+  const box = el.image && dirty
+    ? { left: el.x * scale, top: el.y * scale, width: el.image.w * scale, height: el.image.h * scale }
+    : dirty || !r
+      ? drawnStyle(el, scale)
+      : { left: r.x * scale, top: r.y * scale, width: r.w * scale, height: r.h * scale };
+  const kind = el.image ? (dirty ? "img moved" : "img hit") : dirty || !r ? "drawn" : "hit";
+  return (
+    <div
+      data-id={el.id}
+      className={`el ${kind} ${selected ? "sel" : ""}`}
+      style={box}
+      title={el.srcFont || undefined}
+      onPointerDown={(e) => on.down(e, el)}
+      onPointerMove={on.move}
+      onPointerUp={on.up}
+      onDoubleClick={on.focusText}
+    >
+      {el.image
+        ? dirty && <img src={on.pngUrl(el.image.png)} alt="" draggable={false} />
+        : dirty || !r ? shownText(el, fonts) || "\u00a0" : null}
+      {single && !el.image && (
+        <span
+          className="resize"
+          title="Drag to set the width so text wraps. Double-click for automatic width."
+          onPointerDown={on.resizeStart}
+          onPointerMove={(e) => on.resizeMove(e, el)}
+          onPointerUp={on.resizeEnd}
+          onDoubleClick={(e) => (e.stopPropagation(), on.unwrap(el.id))}
+        />
+      )}
+    </div>
+  );
+});
+
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export default function App() {
@@ -116,7 +183,6 @@ export default function App() {
       setReport({ ok: false, lines: [`Couldn't reopen ${r.name}.`, "It may have been moved, renamed or deleted. Open it again to refresh the entry."] });
     }
   };
-  const [, rerender] = useState(0);
   const [theme, setTheme] = usePref("theme", matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
   const [side, setSide] = usePref("side", "right");
@@ -135,7 +201,24 @@ export default function App() {
   const elsRef = useRef<El[]>([]);
   const past = useRef<El[][]>([]);
   const lastTouch = useRef("");
-  const images = useRef(new Map<number, { key: string; url: string }>());
+  // Page previews come from a worker; `wanted` holds the latest request per page so stale results are dropped.
+  const worker = useRef<Worker | null>(null);
+  const canvases = useRef(new Map<number, HTMLCanvasElement>());
+  const wanted = useRef(new Map<number, string>());
+  useEffect(() => {
+    const w = new Worker(new URL("./render.worker.ts", import.meta.url), { type: "module" });
+    w.onmessage = ({ data }: MessageEvent<{ page: number; key: string; bitmap?: ImageBitmap }>) => {
+      const canvas = canvases.current.get(data.page);
+      if (data.bitmap && canvas && wanted.current.get(data.page) === data.key) {
+        canvas.width = data.bitmap.width;
+        canvas.height = data.bitmap.height;
+        canvas.getContext("2d")!.drawImage(data.bitmap, 0, 0);
+      }
+      data.bitmap?.close();
+    };
+    worker.current = w;
+    return () => w.terminate();
+  }, []);
   const pngUrls = useRef(new Map<Uint8Array, string>());
   const resizing = useRef("");
   const pngUrl = (png: Uint8Array) => {
@@ -199,16 +282,21 @@ export default function App() {
         : e,
     );
 
+  const clearPreviews = () => {
+    for (const url of pngUrls.current.values()) URL.revokeObjectURL(url);
+    pngUrls.current.clear();
+    wanted.current.clear();
+    for (const c of canvases.current.values()) c.width = 0;
+  };
+
   const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
     try {
       const bytes = new Uint8Array(await f.arrayBuffer());
       const { pages, els } = extract(bytes);
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
-      for (const img of images.current.values()) URL.revokeObjectURL(img.url);
-      for (const url of pngUrls.current.values()) URL.revokeObjectURL(url);
-      images.current.clear();
-      pngUrls.current.clear();
+      clearPreviews();
+      worker.current?.postMessage({ bytes });
       past.current = [];
       elsRef.current = list;
       setFile({ name: f.name, bytes, handle });
@@ -367,22 +455,18 @@ export default function App() {
     return () => clearTimeout(t);
   }, [report]);
 
-  // Re-render a page image only when the set of removed originals on it changes.
+  // Ask for a new page preview only when the set of removed originals on it (or the zoom) changes.
   useEffect(() => {
     if (!file) return;
     const t = setTimeout(() => {
-      let changed = false;
       pages.forEach((_, p) => {
-        const key = `${scale}|` + els.filter((e) => e.page === p && e.orig && isDirty(e)).map((e) => e.id).join();
-        const old = images.current.get(p);
-        if (old?.key === key) return;
-        const png = renderPage(file.bytes, p, scale * devicePixelRatio, els);
-        if (old) URL.revokeObjectURL(old.url);
-        images.current.set(p, { key, url: URL.createObjectURL(new Blob([png as BlobPart], { type: "image/png" })) });
-        changed = true;
+        const removed = removedOn(els, p);
+        const key = `${scale}|${JSON.stringify(removed)}`;
+        if (wanted.current.get(p) === key) return;
+        wanted.current.set(p, key);
+        worker.current?.postMessage({ page: p, key, scale: scale * devicePixelRatio, removed });
       });
-      if (changed) rerender((n) => n + 1);
-    }, 60);
+    }, 30);
     return () => clearTimeout(t);
   }, [file, pages, els, scale]);
 
@@ -614,21 +698,9 @@ export default function App() {
   };
 
   const hfEls = headerFooterEls(hf, pages);
-  // Same wrapping code and font metrics as the saved file, so the preview breaks lines where the PDF will.
-  const shownText = (el: El) =>
-    el.wrap ? wrapLines(el.text, el.wrap, (t) => measure(el.font, fonts)(t, el.size)).join("\n") : el.text;
-  const drawnStyle = (el: El) => ({
-    left: el.x * scale,
-    top: (el.y + (el.ascent - cssBaseline(el.lineHeight ?? LINE_HEIGHT)) * el.size) * scale,
-    width: el.wrap ? el.wrap * scale : undefined,
-    lineHeight: el.lineHeight ?? LINE_HEIGHT,
-    fontSize: el.size * scale,
-    color: el.color,
-    transform: el.align === "center" ? "translateX(-50%)" : el.align === "right" ? "translateX(-100%)" : undefined,
-    ...cssFont(el.font),
-  });
 
-  const selected = els.filter((e) => sel.includes(e.id));
+  const selSet = new Set(sel);
+  const selected = els.filter((e) => selSet.has(e.id));
   // Selecting text brings its settings into view.
   useEffect(() => void (sel.length && setTab("edit")), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
@@ -636,6 +708,54 @@ export default function App() {
   const shared = <K extends keyof El>(k: K) => (selText.every((e) => e[k] === selText[0][k]) ? selText[0]?.[k] : undefined);
   const [font, size, color] = [shared("font"), shared("size"), shared("color")];
   const rotated = pages.some((p) => p.rotated);
+
+  // Handlers read the latest state through a ref, so ElView's props stay stable between renders.
+  const live = useRef<ElHandlers>(null!);
+  live.current = {
+    down: onElDown,
+    move: onElMove,
+    up: endDrag,
+    focusText: () => (textBox.current?.focus(), textBox.current?.select()),
+    resizeStart: (e) => {
+      e.stopPropagation();
+      if (e.button !== 0) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      resizing.current = "wrap:" + performance.now();
+    },
+    resizeMove: (e, el) => {
+      if (!resizing.current) return;
+      const page = (e.currentTarget as HTMLElement).closest(".page")!.getBoundingClientRect();
+      const right = Math.min((e.clientX - page.left) / scale, inside(el.page)?.r ?? Infinity);
+      patch([el.id], { wrap: Math.max(el.size * 2, Math.round(right - el.x)) }, resizing.current);
+    },
+    resizeEnd: () => void (resizing.current = ""),
+    unwrap: (id) => patch([id], { wrap: undefined }),
+    pngUrl,
+  };
+  const elHandlers = useMemo<ElHandlers>(() => ({
+    down: (e, el) => live.current.down(e, el),
+    move: (e) => live.current.move(e),
+    up: () => live.current.up(),
+    focusText: () => live.current.focusText(),
+    resizeStart: (e) => live.current.resizeStart(e),
+    resizeMove: (e, el) => live.current.resizeMove(e, el),
+    resizeEnd: () => live.current.resizeEnd(),
+    unwrap: (id) => live.current.unwrap(id),
+    pngUrl: (png) => live.current.pngUrl(png),
+  }), []);
+
+  // Reuse each item's React element until the item, its selection state, the zoom or the fonts change.
+  // Even memoised components cost something to describe; with hundreds of items that was most of a drag frame.
+  const views = useRef(new WeakMap<El, { key: string; fonts: Map<string, Uint8Array>; node: ReactElement }>());
+  const viewOf = (el: El) => {
+    const selectedNow = selSet.has(el.id), single = one?.id === el.id;
+    const key = `${scale}|${selectedNow}|${single}`;
+    const hit = views.current.get(el);
+    if (hit && hit.key === key && hit.fonts === fonts) return hit.node;
+    const node = <ElView key={el.id} el={el} scale={scale} selected={selectedNow} single={single} fonts={fonts} on={elHandlers} />;
+    views.current.set(el, { key, fonts, node });
+    return node;
+  };
 
   return (
     <div
@@ -730,7 +850,7 @@ export default function App() {
               setMenu({ page: p, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, left: e.clientX, top: e.clientY });
             }}
           >
-            {images.current.get(p) && <img src={images.current.get(p)!.url} alt="" draggable={false} />}
+            <canvas ref={(c) => void (c ? canvases.current.set(p, c) : canvases.current.delete(p))} />
             {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
             {band?.page === p && (
               <div
@@ -741,56 +861,9 @@ export default function App() {
             {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
             {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
             {/* images first, so text drawn over them stays clickable */}
-            {els.filter((el) => el.page === p && !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map((el) => {
-              const dirty = isDirty(el);
-              const r = el.orig?.rect;
-              const box = el.image && dirty
-                ? { left: el.x * scale, top: el.y * scale, width: el.image.w * scale, height: el.image.h * scale }
-                : dirty || !r
-                  ? drawnStyle(el)
-                  : { left: r.x * scale, top: r.y * scale, width: r.w * scale, height: r.h * scale };
-              const kind = el.image ? (dirty ? "img moved" : "img hit") : dirty || !r ? "drawn" : "hit";
-              return (
-                <div
-                  key={el.id}
-                  data-id={el.id}
-                  className={`el ${kind} ${sel.includes(el.id) ? "sel" : ""}`}
-                  style={box}
-                  title={el.srcFont || undefined}
-                  onPointerDown={(e) => onElDown(e, el)}
-                  onPointerMove={onElMove}
-                  onPointerUp={endDrag}
-                  onDoubleClick={() => (textBox.current?.focus(), textBox.current?.select())}
-                >
-                  {el.image
-                    ? dirty && <img src={pngUrl(el.image.png)} alt="" draggable={false} />
-                    : dirty || !r ? shownText(el) || "\u00a0" : null}
-                  {one?.id === el.id && !el.image && (
-                    <span
-                      className="resize"
-                      title="Drag to set the width so text wraps. Double-click for automatic width."
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        if (e.button !== 0) return;
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                        resizing.current = "wrap:" + performance.now();
-                      }}
-                      onPointerMove={(e) => {
-                        if (!resizing.current) return;
-                        const page = e.currentTarget.closest(".page")!.getBoundingClientRect();
-                        const area = inside(el.page);
-                        const right = Math.min((e.clientX - page.left) / scale, area?.r ?? Infinity);
-                        patch([el.id], { wrap: Math.max(el.size * 2, Math.round(right - el.x)) }, resizing.current);
-                      }}
-                      onPointerUp={() => (resizing.current = "")}
-                      onDoubleClick={(e) => (e.stopPropagation(), patch([el.id], { wrap: undefined }))}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {els.filter((el) => el.page === p && !el.deleted).sort((a, b) => +!!b.image - +!!a.image).map(viewOf)}
             {hfEls.filter((el) => el.page === p).map((el) => (
-              <div key={el.id} className="el drawn hf" style={drawnStyle(el)}>{el.text}</div>
+              <div key={el.id} className="el drawn hf" style={drawnStyle(el, scale)}>{el.text}</div>
             ))}
           </div>
         ))}

@@ -272,9 +272,16 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
   return { pages, els };
 }
 
+export type Removed = { text: Rect[]; images: Rect[] };
+
+/** Where the originals of edited, moved or deleted items sit on a page: those get removed. */
+export function removedOn(els: El[], page: number): Removed {
+  const gone = els.filter((e) => e.page === page && e.orig && isDirty(e));
+  return { text: gone.filter((e) => !e.image).map((e) => e.orig!.rect), images: gone.filter((e) => e.image).map((e) => e.orig!.rect) };
+}
+
 /** Text and images go in separate passes so removing one never touches the other. */
-function redact(page: mupdf.PDFPage, els: El[], images: boolean) {
-  const rects = els.filter((e) => e.orig && isDirty(e) && !!e.image === images).map((e) => e.orig!.rect);
+function redact(page: mupdf.PDFPage, rects: Rect[], images: boolean) {
   if (!rects.length) return;
   for (const r of rects) {
     // Shrunk so glyphs on neighbouring lines (or images just touching) that overlap the edge survive.
@@ -289,18 +296,27 @@ function redact(page: mupdf.PDFPage, els: El[], images: boolean) {
   );
 }
 
-function removeEdited(page: mupdf.PDFPage, index: number, els: El[]) {
-  const mine = els.filter((e) => e.page === index);
-  redact(page, mine, false);
-  redact(page, mine, true);
+function removeEdited(page: mupdf.PDFPage, removed: Removed) {
+  redact(page, removed.text, false);
+  redact(page, removed.images, true);
 }
 
-/** PNG of a page with the original text of edited/moved/deleted elements removed. */
-export function renderPage(bytes: Uint8Array, page: number, scale: number, els: El[]): Uint8Array {
-  // ponytail: reopens the document per render, fine for CV-sized files; cache docs if big PDFs lag
+/** RGBA pixels of a page with removed originals taken out. Raw pixels, because PNG encoding was the slow part. */
+export function renderPage(bytes: Uint8Array, page: number, scale: number, removed: Removed) {
+  // ponytail: reopens the document per render; fine for CV-sized files, cache the doc if big PDFs lag
   const p = open(bytes).loadPage(page);
-  removeEdited(p, page, els);
-  return p.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false).asPNG();
+  removeEdited(p, removed);
+  const pix = p.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false);
+  const w = pix.getWidth(), h = pix.getHeight(), stride = pix.getStride(), src = pix.getPixels();
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++)
+    for (let x = 0, s = y * stride, d = y * w * 4; x < w; x++, s += 3, d += 4) {
+      rgba[d] = src[s];
+      rgba[d + 1] = src[s + 1];
+      rgba[d + 2] = src[s + 2];
+      rgba[d + 3] = 255;
+    }
+  return { w, h, rgba };
 }
 
 export async function exportPdf(
@@ -309,7 +325,7 @@ export async function exportPdf(
   fonts: Map<string, Uint8Array>,
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
-  for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), p, els);
+  for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
   // garbage collection drops the old content streams, so the removed text is gone from the file bytes too
   const cleaned = doc.saveToBuffer("garbage=compact,compress").asUint8Array();
 

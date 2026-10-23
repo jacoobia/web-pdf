@@ -6,4 +6,5 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: { exclude: ["mupdf"] },
   build: { target: "esnext" },
+  worker: { format: "es" }, // the render worker imports mupdf, which needs top-level await
 });

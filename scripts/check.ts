@@ -1,7 +1,7 @@
 // End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { extract, exportPdf, familyOf, fontKey, headerFooterEls, measure, pickFace, renderPage, wrapLines, type El } from "../src/pdf";
+import { extract, exportPdf, familyOf, fontKey, headerFooterEls, measure, pickFace, removedOn, renderPage, wrapLines, type El } from "../src/pdf";
 import { confine, snap } from "../src/snap";
 import { makeSample, CALIBRI } from "./sample";
 
@@ -28,7 +28,9 @@ els.push({
   size: 11, color: "#000000", font: "Helvetica", srcFont: "", bold: false, italic: false,
 });
 
-assert.ok(renderPage(src, 0, 1, els).length > 1000, "renders a PNG");
+const shot = renderPage(src, 0, 1, removedOn(els, 0));
+assert.equal(shot.rgba.length, shot.w * shot.h * 4, "renders RGBA pixels");
+assert.deepEqual([shot.w, shot.h], [595, 842]);
 const { pdf, problems } = await exportPdf(src, els, new Map([[key, calibri]]));
 assert.deepEqual(problems, []);
 
