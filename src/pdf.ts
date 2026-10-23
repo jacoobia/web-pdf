@@ -371,7 +371,11 @@ export async function exportPdf(
   const doc = open(bytes);
   for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
   // garbage collection drops the old content streams, so the removed text is gone from the file bytes too
-  const cleaned = doc.saveToBuffer("garbage=compact,compress").asUint8Array();
+  // Copied out: asUint8Array is a view into MuPDF's memory, which goes blank if that memory grows while
+  // pdf-lib (async) is still reading it, e.g. when a preview renders in the same worker meanwhile.
+  const saved = doc.saveToBuffer("garbage=compact,compress");
+  const cleaned = saved.asUint8Array().slice();
+  saved.destroy();
 
   const out = await PDFDocument.load(cleaned);
   out.registerFontkit(fontkit);
