@@ -1,9 +1,10 @@
 // PDF read/render/write. No DOM, so scripts/check.ts can run it under Bun.
 // MuPDF reads text (with fonts), renders pages and truly removes old text (redaction).
 // pdf-lib writes the new text with embedded fonts so it stays selectable for ATS parsers.
-import * as mupdf from "mupdf";
-import { PDFDocument, StandardFontEmbedder, rgb, type PDFFont, type PDFImage } from "pdf-lib";
+
 import fontkit from "@pdf-lib/fontkit";
+import * as mupdf from "mupdf";
+import { PDFDocument, type PDFFont, type PDFImage, rgb, StandardFontEmbedder } from "pdf-lib";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 export type Style = { font: string; size: number; color: string };
@@ -39,7 +40,9 @@ for (const [fam, css, faces] of [
   ["Times", '"Times New Roman", Times, serif', ["-Roman", "-Bold", "-Italic", "-BoldItalic"]],
   ["Courier", '"Courier New", Courier, monospace', ["", "-Bold", "-Oblique", "-BoldOblique"]],
 ] as const) {
-  faces.forEach((face, i) => (STANDARD_FONTS[fam + face] = { css, weight: i % 2 ? 700 : 400, italic: i >= 2 }));
+  faces.forEach((face, i) => {
+    STANDARD_FONTS[fam + face] = { css, weight: i % 2 ? 700 : 400, italic: i >= 2 };
+  });
 }
 
 // Metric-compatible free fonts (same character widths) for common Microsoft fonts.
@@ -65,7 +68,11 @@ export function fontFamily(name: string): string {
     .replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-export function fontHelp(name: string): { family: string; googleUrl: string; alternative?: { family: string; url: string } } {
+export function fontHelp(name: string): {
+  family: string;
+  googleUrl: string;
+  alternative?: { family: string; url: string };
+} {
   const family = fontFamily(name);
   const alt = ALTERNATIVES[compact(family)];
   return {
@@ -86,7 +93,9 @@ export function pickFace(family: string, keys: string[], bold: boolean, italic: 
   if (["Helvetica", "Times", "Courier"].includes(family)) return fallbackFont(family, bold, italic);
   // Plain "Bold" beats Black/Semibold, and faces with extra variants (Light, Narrow…) lose ties.
   const score = (k: string) =>
-    (isBoldName(k) === bold ? 4 : 0) + (isItalicName(k) === italic ? 2 : 0) + (bold && /bold/i.test(k) ? 1 : 0) -
+    (isBoldName(k) === bold ? 4 : 0) +
+    (isItalicName(k) === italic ? 2 : 0) +
+    (bold && /bold/i.test(k) ? 1 : 0) -
     (/black|heavy|light|thin|narrow|condensed|semi|demi|medium|extra|ultra/i.test(k) ? 1 : 0);
   return keys.filter((k) => familyOf(k) === family).reduce((a, b) => (score(b) > score(a) ? b : a));
 }
@@ -168,16 +177,27 @@ export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
   const els: El[] = [];
   pages.forEach((pg, p) => {
     if (hf.skipFirst && p === 0) return;
-    const rows = [["h", hf.header, hf.margin], ["f", hf.footer, pg.h - hf.margin - hf.size]] as const;
+    const rows = [
+      ["h", hf.header, hf.margin],
+      ["f", hf.footer, pg.h - hf.margin - hf.size],
+    ] as const;
     for (const [row, texts, y] of rows)
       texts.forEach((text, i) => {
         if (!text.trim()) return;
         els.push({
-          id: `hf-${row}${i}-${p}`, page: p, y, ascent: 0.8, align: ALIGNS[i],
+          id: `hf-${row}${i}-${p}`,
+          page: p,
+          y,
+          ascent: 0.8,
+          align: ALIGNS[i],
           x: [hf.margin, pg.w / 2, pg.w - hf.margin][i],
           text: text.replace(/\{page\}/g, String(p + 1)).replace(/\{pages\}/g, String(pages.length)),
-          font: hf.font, size: hf.size, color: hf.color,
-          srcFont: "", bold: isBoldName(hf.font), italic: isItalicName(hf.font),
+          font: hf.font,
+          size: hf.size,
+          color: hf.color,
+          srcFont: "",
+          bold: isBoldName(hf.font),
+          italic: isItalicName(hf.font),
         });
       });
   });
@@ -187,9 +207,16 @@ export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
 export function isDirty(el: El): boolean {
   const o = el.orig;
   return (
-    !o || !!el.deleted || el.text !== o.text || el.x !== o.x || el.y !== o.y ||
-    el.size !== o.size || el.color !== o.color || el.font !== o.font ||
-    el.wrap !== undefined || el.lineHeight !== undefined
+    !o ||
+    !!el.deleted ||
+    el.text !== o.text ||
+    el.x !== o.x ||
+    el.y !== o.y ||
+    el.size !== o.size ||
+    el.color !== o.color ||
+    el.font !== o.font ||
+    el.wrap !== undefined ||
+    el.lineHeight !== undefined
   );
 }
 
@@ -198,23 +225,36 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const hex = (c: mupdf.Color) => {
   const [r, g, b] =
     c.length === 4 ? [0, 1, 2].map((i) => (1 - c[i]) * (1 - c[3])) : c.length === 3 ? c : [c[0], c[0], c[0]];
-  return "#" + [r, g, b].map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+  return (
+    "#" +
+    [r, g, b]
+      .map((v) =>
+        Math.round(v * 255)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
 };
 
 const STEXT = "preserve-whitespace,preserve-images";
 
 /** PNG of the `index`th image on a page, counted in the same order `extract` sees them. */
 function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Array {
-  let n = 0, png: Uint8Array | undefined;
-  doc.loadPage(page).toStructuredText(STEXT).walk({
-    onImageBlock(_bbox, _transform, image) {
-      if (n++ !== index) return;
-      let pix = image.toPixmap();
-      const c = pix.getColorSpace()?.getNumberOfComponents();
-      if (c !== 1 && c !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
-      png = pix.asPNG();
-    },
-  });
+  let n = 0,
+    png: Uint8Array | undefined;
+  doc
+    .loadPage(page)
+    .toStructuredText(STEXT)
+    .walk({
+      onImageBlock(_bbox, _transform, image) {
+        if (n++ !== index) return;
+        let pix = image.toPixmap();
+        const c = pix.getColorSpace()?.getNumberOfComponents();
+        if (c !== 1 && c !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
+        png = pix.asPNG();
+      },
+    });
   if (!png) throw new Error(`Image ${index + 1} on page ${page + 1} is missing.`);
   return png;
 }
@@ -237,15 +277,27 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
     const flush = () => {
       const ink = run?.chars.filter((ch) => ch.c.trim()) ?? [];
       if (run && ink.length) {
-        const l = Math.min(...ink.map((c) => c.l)), t = Math.min(...ink.map((c) => c.t));
+        const l = Math.min(...ink.map((c) => c.l)),
+          t = Math.min(...ink.map((c) => c.t));
         const rect = { x: l, y: t, w: Math.max(...ink.map((c) => c.r)) - l, h: Math.max(...ink.map((c) => c.b)) - t };
         const style = { font: fallbackFont(run.name, run.bold, run.italic), size: round(run.size), color: run.color };
-        const text = run.chars.map((c) => c.c).join("").trim();
-        const x = round(ink[0].ox), y = round(t);
+        const text = run.chars
+          .map((c) => c.c)
+          .join("")
+          .trim();
+        const x = round(ink[0].ox),
+          y = round(t);
         els.push({
-          id: `p${p}-${els.length}`, page: p, text, x, y, ...style,
+          id: `p${p}-${els.length}`,
+          page: p,
+          text,
+          x,
+          y,
+          ...style,
           ascent: (ink[0].oy - t) / run.size,
-          srcFont: cleanFontName(run.name), bold: run.bold, italic: run.italic,
+          srcFont: cleanFontName(run.name),
+          bold: run.bold,
+          italic: run.italic,
           orig: { ...style, text, x, y, rect },
         });
       }
@@ -258,11 +310,20 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
         const rect = { x: bbox[0], y: bbox[1], w: bbox[2] - bbox[0], h: bbox[3] - bbox[1] };
         // ponytail: page-sized backgrounds would swallow every click, so they stay part of the page
         if (rect.w * rect.h > 0.8 * (x1 - x0) * (y1 - y0) || !image.getColorSpace()) return;
-        const x = round(rect.x), y = round(rect.y);
+        const x = round(rect.x),
+          y = round(rect.y);
         const none = { font: "", size: 0, color: "" };
         els.push({
-          id: `p${p}-${els.length}`, page: p, text: "", x, y, ascent: 0, ...none,
-          srcFont: "", bold: false, italic: false,
+          id: `p${p}-${els.length}`,
+          page: p,
+          text: "",
+          x,
+          y,
+          ascent: 0,
+          ...none,
+          srcFont: "",
+          bold: false,
+          italic: false,
           image: { w: rect.w, h: rect.h, page: p, index },
           orig: { ...none, text: "", x, y, rect },
         });
@@ -270,20 +331,27 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
       beginLine: flush,
       endLine: flush,
       onChar(c, origin, font, size, quad, color) {
-        const name = font.getName(), col = hex(color);
+        const name = font.getName(),
+          col = hex(color);
         const last = run?.chars.at(-1);
         if (run && (run.name !== name || run.size !== size || run.color !== col || (last && origin[0] - last.r > size)))
           flush();
         run ??= {
-          name, size, color: col,
+          name,
+          size,
+          color: col,
           bold: font.isBold() || isBoldName(name),
           italic: font.isItalic() || isItalicName(name),
           chars: [],
         };
         run.chars.push({
-          c, ox: origin[0], oy: origin[1],
-          l: Math.min(quad[0], quad[4]), r: Math.max(quad[2], quad[6]),
-          t: Math.min(quad[1], quad[3]), b: Math.max(quad[5], quad[7]),
+          c,
+          ox: origin[0],
+          oy: origin[1],
+          l: Math.min(quad[0], quad[4]),
+          r: Math.max(quad[2], quad[6]),
+          t: Math.min(quad[1], quad[3]),
+          b: Math.max(quad[5], quad[7]),
         });
       },
     });
@@ -296,7 +364,10 @@ export type Removed = { text: Rect[]; images: Rect[] };
 /** Where the originals of edited, moved or deleted items sit on a page: those get removed. */
 export function removedOn(els: El[], page: number): Removed {
   const gone = els.filter((e) => e.page === page && e.orig && isDirty(e));
-  return { text: gone.filter((e) => !e.image).map((e) => e.orig!.rect), images: gone.filter((e) => e.image).map((e) => e.orig!.rect) };
+  return {
+    text: gone.filter((e) => !e.image).map((e) => e.orig!.rect),
+    images: gone.filter((e) => e.image).map((e) => e.orig!.rect),
+  };
 }
 
 /** Text and images go in separate passes so removing one never touches the other. */
@@ -304,7 +375,8 @@ function redact(page: mupdf.PDFPage, rects: Rect[], images: boolean) {
   if (!rects.length) return;
   for (const r of rects) {
     // Shrunk so glyphs on neighbouring lines (or images just touching) that overlap the edge survive.
-    const dx = images ? Math.min(1, r.w / 4) : 0.5, dy = images ? Math.min(1, r.h / 4) : r.h * 0.25;
+    const dx = images ? Math.min(1, r.w / 4) : 0.5,
+      dy = images ? Math.min(1, r.h / 4) : r.h * 0.25;
     page.createAnnotation("Redact").setRect([r.x + dx, r.y + dy, r.x + r.w - dx, r.y + r.h - dy]);
   }
   page.applyRedactions(
@@ -323,7 +395,10 @@ function removeEdited(page: mupdf.PDFPage, removed: Removed) {
 /** RGBA pixels of a page. Raw pixels, because PNG encoding was the slow part. */
 function pixels(page: mupdf.PDFPage, scale: number) {
   const pix = page.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false);
-  const w = pix.getWidth(), h = pix.getHeight(), stride = pix.getStride(), src = pix.getPixels();
+  const w = pix.getWidth(),
+    h = pix.getHeight(),
+    stride = pix.getStride(),
+    src = pix.getPixels();
   const rgba = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++)
     for (let x = 0, s = y * stride, d = y * w * 4; x < w; x++, s += 3, d += 4) {
@@ -451,7 +526,10 @@ export async function exportPdf(
       if (!images.has(key)) images.set(key, await out.embedPng(pngs.get(key)!));
       // ponytail: redrawn upright at its box size, so a rotated or skewed image comes back straight
       page.drawImage(images.get(key)!, {
-        x: box.x + el.x, y: box.y + box.height - el.y - el.image.h, width: el.image.w, height: el.image.h,
+        x: box.x + el.x,
+        y: box.y + box.height - el.y - el.image.h,
+        width: el.image.w,
+        height: el.image.h,
       });
       continue;
     }

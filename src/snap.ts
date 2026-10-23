@@ -31,7 +31,15 @@ export function snap(moving: Box, others: Box[], dx: number, dy: number, thresho
   );
   // Baselines win, so text placed beside other text sits on the same line rather than matching box edges.
   const y =
-    closest([moving.base + dy], others.map((o) => o.base), threshold) ??
-    closest([moving.t, mid(moving.t, moving.b), moving.b].map((v) => v + dy), others.flatMap((o) => [o.t, mid(o.t, o.b), o.b]), threshold);
+    closest(
+      [moving.base + dy],
+      others.map((o) => o.base),
+      threshold,
+    ) ??
+    closest(
+      [moving.t, mid(moving.t, moving.b), moving.b].map((v) => v + dy),
+      others.flatMap((o) => [o.t, mid(o.t, o.b), o.b]),
+      threshold,
+    );
   return { dx: dx + (x?.diff ?? 0), dy: dy + (y?.diff ?? 0), guides: { x: x?.at, y: y?.at } as Guides };
 }

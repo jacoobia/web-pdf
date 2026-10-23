@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 // mupdf loads its own .wasm via import.meta.url and uses top-level await.
 export default defineConfig({

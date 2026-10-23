@@ -33,7 +33,9 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
     }
     if (!bytes || !preview) throw new Error("No PDF is open.");
     if (data.type === "render") {
-      const { w, h, rgba } = data.original ? preview.renderOriginal(data.page, data.scale) : preview.render(data.page, data.scale, data.removed);
+      const { w, h, rgba } = data.original
+        ? preview.renderOriginal(data.page, data.scale)
+        : preview.render(data.page, data.scale, data.removed);
       const bitmap = await createImageBitmap(new ImageData(rgba, w, h));
       return self.postMessage({ type: "render", page: data.page, key: data.key, bitmap }, { transfer: [bitmap] });
     }
@@ -44,7 +46,8 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
     const { pdf, problems } = await exportPdf(bytes, data.els, data.fonts);
     reply(data.id, { pdf, problems }, [pdf.buffer as ArrayBuffer]);
   } catch (err) {
-    if (data.type === "render") self.postMessage({ type: "render", page: data.page, key: data.key, error: String(err) });
+    if (data.type === "render")
+      self.postMessage({ type: "render", page: data.page, key: data.key, error: String(err) });
     else reply(data.id, { error: (err as Error).message });
   }
 };
