@@ -22,7 +22,7 @@ import {
   type PageInfo,
   pickFace,
   STANDARD_FONTS,
-} from "./pdf";
+} from "./model";
 import { usePref, usePrefs } from "./prefs";
 import { usePreviews } from "./previews";
 import { openedAt, type Recent, useRecent } from "./recent";

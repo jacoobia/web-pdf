@@ -1,207 +1,26 @@
 import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
-import { PDFDocument, type PDFFont, type PDFImage, rgb, StandardFontEmbedder } from "pdf-lib";
+import { PDFDocument, type PDFFont, type PDFImage, rgb } from "pdf-lib";
+import {
+  cleanFontName,
+  type El,
+  fallbackFont,
+  HYPHEN_CHARS,
+  HYPHENS,
+  isBoldName,
+  isDirty,
+  isItalicName,
+  LINE_HEIGHT,
+  measure,
+  type PageInfo,
+  type Rect,
+  type Removed,
+  removedOn,
+  STANDARD_FONTS,
+  wrapLines,
+} from "./model";
 
-export type Rect = { x: number; y: number; w: number; h: number };
-export type Style = { font: string; size: number; color: string };
-
-export type El = Style & {
-  id: string;
-  page: number;
-  text: string;
-  x: number;
-  y: number;
-  ascent: number;
-  srcFont: string;
-  bold: boolean;
-  italic: boolean;
-  deleted?: boolean;
-  orig?: Style & { text: string; x: number; y: number; rect: Rect };
-  align?: "left" | "center" | "right";
-  image?: { w: number; h: number; page: number; index: number };
-  wrap?: number;
-  lineHeight?: number;
-};
-
-export type PageInfo = { w: number; h: number; rotated: boolean };
-
-export const LINE_HEIGHT = 1.2;
-
-export const STANDARD_FONTS: Record<string, { css: string; weight: number; italic: boolean }> = {};
-for (const [fam, css, faces] of [
-  ["Helvetica", "Helvetica, Arial, sans-serif", ["", "-Bold", "-Oblique", "-BoldOblique"]],
-  ["Times", '"Times New Roman", Times, serif', ["-Roman", "-Bold", "-Italic", "-BoldItalic"]],
-  ["Courier", '"Courier New", Courier, monospace', ["", "-Bold", "-Oblique", "-BoldOblique"]],
-] as const) {
-  faces.forEach((face, i) => {
-    STANDARD_FONTS[fam + face] = { css, weight: i % 2 ? 700 : 400, italic: i >= 2 };
-  });
-}
-
-const ALTERNATIVES: Record<string, string> = {
-  calibri: "Carlito",
-  cambria: "Caladea",
-  arial: "Arimo",
-  helvetica: "Arimo",
-  timesnewroman: "Tinos",
-  times: "Tinos",
-  couriernew: "Cousine",
-  georgia: "Gelasio",
-};
-
-export const cleanFontName = (n: string) => n.replace(/^[A-Z]{6}\+/, "");
-export const compact = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-export function fontFamily(name: string): string {
-  return cleanFontName(name)
-    .split(/[-,]/)[0]
-    .replace(/(PS)?MT$|PS$/, "")
-    .replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-export function fontHelp(name: string): {
-  family: string;
-  googleUrl: string;
-  alternative?: { family: string; url: string };
-} {
-  const family = fontFamily(name);
-  const alt = ALTERNATIVES[compact(family)];
-  return {
-    family,
-    googleUrl: `https://fonts.google.com/?query=${encodeURIComponent(family)}`,
-    alternative: alt ? { family: alt, url: `https://fonts.google.com/specimen/${alt}` } : undefined,
-  };
-}
-
-export const isBoldName = (n: string) => /bold|black|heavy|semibold/i.test(n);
-export const isItalicName = (n: string) => /italic|oblique/i.test(n);
-
-export const familyOf = (key: string) => (STANDARD_FONTS[key] ? key.split("-")[0] : fontFamily(key));
-
-export function pickFace(family: string, keys: string[], bold: boolean, italic: boolean): string {
-  if (["Helvetica", "Times", "Courier"].includes(family)) return fallbackFont(family, bold, italic);
-  const score = (k: string) =>
-    (isBoldName(k) === bold ? 4 : 0) +
-    (isItalicName(k) === italic ? 2 : 0) +
-    (bold && /bold/i.test(k) ? 1 : 0) -
-    (/black|heavy|light|thin|narrow|condensed|semi|demi|medium|extra|ultra/i.test(k) ? 1 : 0);
-  return keys.filter((k) => familyOf(k) === family).reduce((a, b) => (score(b) > score(a) ? b : a));
-}
-
-export function fallbackFont(name: string, bold: boolean, italic: boolean): string {
-  const n = name.toLowerCase();
-  const fam = /courier|mono|consol/.test(n)
-    ? "Courier"
-    : /times|roman|georgia|garamond|cambria|serif|book|minion/.test(n) && !/sans/.test(n)
-      ? "Times"
-      : "Helvetica";
-  if (fam === "Times") return `Times-${bold && italic ? "BoldItalic" : bold ? "Bold" : italic ? "Italic" : "Roman"}`;
-  return bold || italic ? `${fam}-${bold ? "Bold" : ""}${italic ? "Oblique" : ""}` : fam;
-}
-
-const measurers = new Map<string, (text: string, size: number) => number>();
-
-export function measure(font: string, fonts: Map<string, Uint8Array>): (text: string, size: number) => number {
-  const file = fonts.get(font);
-  let m = measurers.get(font);
-  if (!m && file) {
-    const fk = fontkit.create(file);
-    m = (t, s) => (fk.layout(t).glyphs.reduce((w, g) => w + g.advanceWidth, 0) * s) / fk.unitsPerEm;
-  } else if (!m && STANDARD_FONTS[font]) {
-    const std = StandardFontEmbedder.for(font as Parameters<typeof StandardFontEmbedder.for>[0]);
-    m = (t, s) => {
-      try {
-        return std.widthOfTextAtSize(t.replace(HYPHENS, "-"), s);
-      } catch {
-        return t.length * s * 0.5;
-      }
-    };
-  }
-  if (!m) return (t, s) => t.length * s * 0.5;
-  measurers.set(font, m);
-  return m;
-}
-
-export function wrapLines(text: string, width: number | undefined, w: (t: string) => number): string[] {
-  if (!width) return text.split("\n");
-  const out: string[] = [];
-  for (const para of text.split("\n")) {
-    let line = "";
-    for (const word of para.split(" ")) {
-      const next = line ? `${line} ${word}` : word;
-      if (w(next) <= width) {
-        line = next;
-        continue;
-      }
-      if (line) out.push(line);
-      line = word;
-      while (line.length > 1 && w(line) > width) {
-        let n = line.length - 1;
-        while (n > 1 && w(line.slice(0, n)) > width) n--;
-        out.push(line.slice(0, n));
-        line = line.slice(n);
-      }
-    }
-    out.push(line);
-  }
-  return out;
-}
-
-export type HeaderFooter = Style & {
-  header: string[];
-  footer: string[];
-  margin: number;
-  skipFirst: boolean;
-};
-
-const ALIGNS = ["left", "center", "right"] as const;
-
-export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
-  const els: El[] = [];
-  pages.forEach((pg, p) => {
-    if (hf.skipFirst && p === 0) return;
-    const rows = [
-      ["h", hf.header, hf.margin],
-      ["f", hf.footer, pg.h - hf.margin - hf.size],
-    ] as const;
-    for (const [row, texts, y] of rows)
-      texts.forEach((text, i) => {
-        if (!text.trim()) return;
-        els.push({
-          id: `hf-${row}${i}-${p}`,
-          page: p,
-          y,
-          ascent: 0.8,
-          align: ALIGNS[i],
-          x: [hf.margin, pg.w / 2, pg.w - hf.margin][i],
-          text: text.replace(/\{page\}/g, String(p + 1)).replace(/\{pages\}/g, String(pages.length)),
-          font: hf.font,
-          size: hf.size,
-          color: hf.color,
-          srcFont: "",
-          bold: isBoldName(hf.font),
-          italic: isItalicName(hf.font),
-        });
-      });
-  });
-  return els;
-}
-
-export function isDirty(el: El): boolean {
-  const o = el.orig;
-  return (
-    !o ||
-    !!el.deleted ||
-    el.text !== o.text ||
-    el.x !== o.x ||
-    el.y !== o.y ||
-    el.size !== o.size ||
-    el.color !== o.color ||
-    el.font !== o.font ||
-    el.wrap !== undefined ||
-    el.lineHeight !== undefined
-  );
-}
+export * from "./model";
 
 const open = (bytes: Uint8Array) => mupdf.Document.openDocument(bytes, "application/pdf") as mupdf.PDFDocument;
 const round = (n: number) => Math.round(n * 100) / 100;
@@ -337,16 +156,6 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
     });
   }
   return { pages, els };
-}
-
-export type Removed = { text: Rect[]; images: Rect[] };
-
-export function removedOn(els: El[], page: number): Removed {
-  const gone = els.filter((e) => e.page === page && e.orig && isDirty(e));
-  return {
-    text: gone.filter((e) => !e.image).map((e) => e.orig!.rect),
-    images: gone.filter((e) => e.image).map((e) => e.orig!.rect),
-  };
 }
 
 function redact(page: mupdf.PDFPage, rects: Rect[], images: boolean) {
@@ -524,8 +333,6 @@ export async function exportPdf(
   return { pdf, problems: verify(pdf, els) };
 }
 
-const HYPHEN_CHARS = "\u2010\u2011\u2212";
-const HYPHENS = new RegExp(`[${HYPHEN_CHARS}]`, "g");
 const norm = (s: string) => s.replace(HYPHENS, "-").replace(/\s+/g, " ").trim();
 
 function verify(pdf: Uint8Array, els: El[]): string[] {
@@ -546,5 +353,3 @@ function verify(pdf: Uint8Array, els: El[]): string[] {
   }
   return problems;
 }
-
-export const fontKey = (bytes: Uint8Array) => fontkit.create(bytes).postscriptName ?? "";

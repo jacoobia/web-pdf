@@ -195,5 +195,10 @@ assert.deepEqual(
 const bases = outEls.map((e) => e.y + e.ascent * e.size);
 assert.ok(Math.abs(bases[1] - bases[0] - 18) < 0.3, `line spacing ${bases[1] - bases[0]}`);
 
+assert.ok(
+  !/from "mupdf"/.test(await Bun.file("src/lib/model.ts").text()),
+  "model.ts is loaded by the page, so MuPDF must stay out of it",
+);
+
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

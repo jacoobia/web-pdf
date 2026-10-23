@@ -1,4 +1,4 @@
-import { type El, LINE_HEIGHT, measure, STANDARD_FONTS, wrapLines } from "./pdf";
+import { type El, LINE_HEIGHT, measure, STANDARD_FONTS, wrapLines } from "./model";
 
 const cssBaseline = (lineHeight: number) => 0.35 + lineHeight / 2;
 

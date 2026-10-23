@@ -1,4 +1,4 @@
-import { compact, type El, fontHelp } from "../../lib/pdf";
+import { compact, type El, fontHelp } from "../../lib/model";
 import { Note, TextLink } from "../ui";
 
 export function FontNote({ el, loaded, onUseForAll }: { el: El; loaded: boolean; onUseForAll: () => void }) {

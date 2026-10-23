@@ -25,14 +25,14 @@ Solve problems with the platform and the packages already in `package.json`. Get
 
 ## Performance
 
-- PDF reading, rendering and saving run in `src/lib/render.worker.ts`. Keep that work off the main thread.
+- PDF reading, rendering and saving run in `src/lib/render.worker.ts`. Keep that work off the main thread. The page imports `src/lib/model.ts`, which must not import MuPDF; MuPDF code goes in `src/lib/pdf.ts`.
 - `PageCanvas` caches page and item views, and `useEditor` keeps handlers stable, so typing and dragging only re-render what changed. Keep new state and props flowing through those caches.
 - Style state with plain classes on `.app`, never CSS `:has()`: Chrome re-checks it on every keystroke in large documents.
 - Test changes to rendering or editing against the 60-page document from `bun scripts/sample.ts --heavy`.
 
 ## Checks
 
-- Changes to `src/lib/pdf.ts` or `src/lib/snap.ts` add an assertion to `scripts/check.ts`.
+- Changes to `src/lib/pdf.ts`, `src/lib/model.ts` or `src/lib/snap.ts` add an assertion to `scripts/check.ts`.
 - Work is done when `bun run lint`, `bun run typecheck`, `bun run test` (Windows) and `bun run build` pass, and UI changes have been tried in `bun run dev`. Report any failures as they are.
 
 ## Commits
