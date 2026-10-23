@@ -67,7 +67,44 @@ export async function makeLargeSample(): Promise<Uint8Array> {
   return doc.save();
 }
 
+/** Noise photo: barely compresses, so each one is a few MB like a real camera image. */
+function photo(w: number, h: number, seed: number): Uint8Array {
+  const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, w, h], false);
+  const px = pix.getPixels();
+  for (let i = 0, s = seed; i < px.length; i++) px[i] = (s = (s * 1103515245 + 12345) >>> 0) >>> 24;
+  return pix.asJPEG(92);
+}
+
+/** 60 dense pages with vector tables and six large photos: for finding where the editor gets slow. */
+export async function makeHeavySample(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const sans = await doc.embedFont(await Bun.file(CALIBRI).bytes(), { subset: true });
+  const bold = await doc.embedFont(await Bun.file("C:/Windows/Fonts/calibrib.ttf").bytes(), { subset: true });
+  const photos = await Promise.all([1, 2, 3, 4, 5, 6].map((i) => doc.embedJpg(photo(2400, 1800, i))));
+  let seed = 3;
+  const word = () => WORDS[(seed = (seed * 31 + 11) % 997) % WORDS.length];
+  const sentence = (n: number) => Array.from({ length: n }, word).join(" ");
+  const line = rgb(0.75, 0.75, 0.8);
+  for (let p = 0; p < 60; p++) {
+    const page = doc.addPage([612, 792]);
+    page.drawText(`Section ${p + 1}`, { x: 36, y: 750, size: 16, font: bold });
+    if (p % 10 === 3) page.drawImage(photos[(p / 10) | 0], { x: 36, y: 520, width: 300, height: 225 });
+    const top = p % 10 === 3 ? 505 : 730;
+    for (let col = 0; col < 2; col++)
+      for (let y = top; y > 250; y -= 11) page.drawText(sentence(7), { x: 36 + col * 280, y, size: 8.5, font: sans });
+    // a 6x8 table of vector lines and cells
+    for (let r = 0; r <= 8; r++) page.drawLine({ start: { x: 36, y: 230 - r * 22 }, end: { x: 576, y: 230 - r * 22 }, color: line });
+    for (let c = 0; c <= 6; c++) page.drawLine({ start: { x: 36 + c * 90, y: 230 }, end: { x: 36 + c * 90, y: 54 }, color: line });
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 6; c++) page.drawText(sentence(2), { x: 40 + c * 90, y: 214 - r * 22, size: 8, font: r ? sans : bold });
+    page.drawText(`Page ${p + 1} of 60`, { x: 270, y: 30, size: 8, font: sans });
+  }
+  return doc.save();
+}
+
 if (import.meta.main) {
   await Bun.write("scripts/sample.pdf", await makeSample());
   await Bun.write("scripts/large.pdf", await makeLargeSample());
+  if (Bun.argv.includes("--heavy")) await Bun.write("scripts/heavy.pdf", await makeHeavySample());
 }
