@@ -14,7 +14,7 @@ Open an issue saying what you did, what you expected and what happened instead, 
 4. Run `bun run lint`, `bun run typecheck` and, on Windows, `bun run test`.
 5. Open a pull request saying what changed and why.
 
-The pre-commit hook runs Biome on staged files and the typechecker. Commit messages are a single line of 72 characters or fewer, written as a summary of the change ("Fix wrapping of long words"), which the commit-msg hook checks.
+The pre-commit hook runs Biome on staged files and the typechecker. Commit messages are a single lower-case line of 72 characters or fewer, starting with the type of change: `feat: add a settings menu`, `fix: wrap long words`. The types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci`, `build`, `style` and `revert`. The commit-msg hook checks this.
 
 ## Project layout
 
