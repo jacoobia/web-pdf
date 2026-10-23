@@ -39,9 +39,11 @@ const TABS = [["edit", "Edit"], ["fonts", "Fonts"], ["page", "Page"]] as const;
 
 const PDF_TYPE = { description: "PDF", accept: { "application/pdf": [".pdf"] } };
 
-// Recently opened. Browsers never reveal file paths, so names and dates go in localStorage, and file
-// handles (Chrome/Edge only) in IndexedDB, the only storage that can hold them.
-type Recent = { name: string; openedAt: number; handle: boolean };
+// Recently opened. Browsers never reveal file paths, so names and dates go in localStorage. IndexedDB holds what
+// reopening needs: the file handle (Chrome/Edge: reopens the live file) and a copy of the PDF (any browser:
+// used when there's no handle, or the file moved, or access was refused).
+type Recent = { name: string; openedAt: number; handle: boolean; copy?: boolean };
+const COPY_LIMIT = 50 * 1024 * 1024; // bigger PDFs aren't copied, to keep browser storage in check
 const readRecent = (): Recent[] => {
   try {
     return JSON.parse(localStorage.getItem("recent") ?? "[]");
@@ -49,17 +51,23 @@ const readRecent = (): Recent[] => {
     return [];
   }
 };
-const handles = <T,>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>) =>
+const stored = <T,>(name: "handles" | "files", mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>) =>
   new Promise<T>((resolve, reject) => {
-    const open = indexedDB.open("pdf-editor", 1);
-    open.onupgradeneeded = () => open.result.createObjectStore("handles");
+    const open = indexedDB.open("pdf-editor", 2);
+    open.onupgradeneeded = () => {
+      for (const s of ["handles", "files"]) if (!open.result.objectStoreNames.contains(s)) open.result.createObjectStore(s);
+    };
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
-      const req = run(open.result.transaction("handles", mode).objectStore("handles"));
+      const req = run(open.result.transaction(name, mode).objectStore(name));
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     };
   });
+const unstore = (name: string) => {
+  stored("handles", "readwrite", (s) => s.delete(name)).catch(() => {});
+  stored("files", "readwrite", (s) => s.delete(name)).catch(() => {});
+};
 const openedAt = (t: number) =>
   new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -153,26 +161,35 @@ export default function App() {
       localStorage.setItem("recent", JSON.stringify(list));
     } catch {}
   };
-  const remember = (name: string, handle?: FileSystemFileHandle) => {
+  const remember = (name: string, handle?: FileSystemFileHandle, file?: File) => {
     const old = recent.find((r) => r.name === name);
-    saveRecent([{ name, openedAt: Date.now(), handle: !!handle || !!old?.handle }, ...recent.filter((r) => r !== old)].slice(0, 8));
-    if (handle) handles("readwrite", (s) => s.put(handle, name)).catch(() => {});
+    const copy = !!file && file.size <= COPY_LIMIT;
+    const next = [{ name, openedAt: Date.now(), handle: !!handle || !!old?.handle, copy: copy || !!old?.copy }, ...recent.filter((r) => r !== old)];
+    for (const gone of next.slice(8)) unstore(gone.name);
+    saveRecent(next.slice(0, 8));
+    if (handle) stored("handles", "readwrite", (s) => s.put(handle, name)).catch(() => {});
+    // The bytes themselves: storing the File can keep only a reference to it on disk, which dies with the file.
+    if (copy) file.arrayBuffer().then((buf) => stored("files", "readwrite", (s) => s.put(new Blob([buf], { type: "application/pdf" }), name))).catch(() => {});
   };
   const forget = (name: string) => {
     saveRecent(recent.filter((r) => r.name !== name));
-    handles("readwrite", (s) => s.delete(name)).catch(() => {});
+    unstore(name);
   };
+  /** The live file if the browser allows it, otherwise the copy saved when it was last opened, otherwise the picker. */
   const reopen = async (r: Recent) => {
     try {
-      const h = r.handle ? await handles<FileSystemFileHandle | undefined>("readonly", (s) => s.get(r.name)) : undefined;
-      if (!h) return pickPdf();
-      const perm = h as unknown as { queryPermission(o: object): Promise<string>; requestPermission(o: object): Promise<string> };
-      if ((await perm.queryPermission({ mode: "read" })) !== "granted" && (await perm.requestPermission({ mode: "read" })) !== "granted")
-        return;
-      await openPdf(await h.getFile(), h);
-    } catch {
-      setReport({ ok: false, lines: [`Couldn't reopen ${r.name}.`, "It may have been moved, renamed or deleted. Open it again to refresh the entry."] });
-    }
+      const h = r.handle ? await stored<FileSystemFileHandle | undefined>("handles", "readonly", (s) => s.get(r.name)) : undefined;
+      const perm = h as unknown as { queryPermission(o: object): Promise<string>; requestPermission(o: object): Promise<string> } | undefined;
+      if (h && perm && ((await perm.queryPermission({ mode: "read" })) === "granted" || (await perm.requestPermission({ mode: "read" })) === "granted")) {
+        const live = await h.getFile();
+        await live.slice(0, 1).arrayBuffer(); // a moved or deleted file only fails when read, so check before choosing it
+        return await openPdf(live, h);
+      }
+    } catch {} // moved, renamed, deleted, or access refused: try the copy
+    const copy = r.copy ? await stored<Blob | undefined>("files", "readonly", (s) => s.get(r.name)).catch(() => undefined) : undefined;
+    if (!copy) return pickPdf();
+    if (await openPdf(new File([copy], r.name, { type: "application/pdf" })))
+      setReport({ ok: true, lines: [`Opened the copy of ${r.name} saved ${openedAt(r.openedAt)}.`, "If you've changed the file since, open it again with Open PDF."] });
   };
   // Appearance and editing preferences; the Settings window edits them all.
   const [themePref, setThemePref] = usePref("theme", DEFAULT_PREFS.theme);
@@ -445,7 +462,7 @@ export default function App() {
       saved.current = { els: list, hf };
       setFile({ name: f.name, handle });
       setNear(new Set([0, 1, 2]));
-      remember(f.name, handle);
+      remember(f.name, handle, f);
       setPages(pages);
       setEls(list);
       setSel([]);
@@ -453,8 +470,10 @@ export default function App() {
       const have = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)].map(compact);
       const need = [...new Set(list.map((e) => e.srcFont).filter((s) => s && !have.includes(compact(s))))];
       if (need.length && "queryLocalFonts" in window) await findInstalled(need, true);
+      return true;
     } catch (err) {
       setReport({ ok: false, lines: [`Couldn't open ${f.name}: ${(err as Error).message}`] });
+      return false;
     }
   };
 
@@ -1441,7 +1460,7 @@ export default function App() {
                           <span className="recent-name">{r.name}</span>
                           <span className="recent-date">
                             {openedAt(r.openedAt)}
-                            {!r.handle && " · opens the file picker"}
+                            {!r.handle && (r.copy ? " · opens the saved copy" : " · opens the file picker")}
                           </span>
                         </span>
                       </button>
