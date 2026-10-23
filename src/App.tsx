@@ -282,11 +282,28 @@ export default function App() {
         : e,
     );
 
+  // What was last opened or saved; anything else counts as unsaved. Undoing back to it counts as saved again.
+  const saved = useRef<{ els: El[]; hf: HeaderFooter | null }>({ els: [], hf: null });
+  const unsaved = () => elsRef.current !== saved.current.els || hf !== saved.current.hf;
+
   const clearPreviews = () => {
     for (const url of pngUrls.current.values()) URL.revokeObjectURL(url);
     pngUrls.current.clear();
     wanted.current.clear();
     for (const c of canvases.current.values()) c.width = 0;
+  };
+
+  const closePdf = () => {
+    if (unsaved() && !confirm("Close this PDF? Edits you haven't saved will be lost.")) return;
+    clearPreviews();
+    past.current = [];
+    elsRef.current = [];
+    setFile(null);
+    setPages([]);
+    setEls([]);
+    setSel([]);
+    setAdding(false);
+    setReport(null);
   };
 
   const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
@@ -299,6 +316,7 @@ export default function App() {
       worker.current?.postMessage({ bytes });
       past.current = [];
       elsRef.current = list;
+      saved.current = { els: list, hf };
       setFile({ name: f.name, bytes, handle });
       remember(f.name, handle);
       setPages(pages);
@@ -425,7 +443,8 @@ export default function App() {
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     await new Promise((r) => setTimeout(r, 30)); // let the toast paint before the export blocks the page
     try {
-      const { pdf, problems } = await exportPdf(file.bytes, [...elsRef.current, ...hfEls], fonts);
+      const snapshot = { els: elsRef.current, hf };
+      const { pdf, problems } = await exportPdf(file.bytes, [...snapshot.els, ...hfEls], fonts);
       if (target) {
         const out = await target.createWritable();
         await out.write(pdf as BufferSource);
@@ -437,6 +456,7 @@ export default function App() {
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
       }
+      saved.current = snapshot;
       // Without a save picker the browser takes over (and may ask where to save), so don't claim it's saved.
       const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
       setReport(
@@ -560,7 +580,7 @@ export default function App() {
         patch(sel, (el) => ({ x: el.x + moves.get(el.page)![0], y: el.y + moves.get(el.page)![1] }), "nudge:" + sel.join());
       }
     };
-    const onLeave = (e: BeforeUnloadEvent) => past.current.length && e.preventDefault();
+    const onLeave = (e: BeforeUnloadEvent) => file && unsaved() && e.preventDefault();
     // Only needed for text copied in another app; our own copies paste from `clip`.
     const onPaste = (e: ClipboardEvent) => {
       if (isTyping(e.target) || !file) return;
@@ -781,6 +801,7 @@ export default function App() {
           <button className="btn" onClick={() => setScale((s) => Math.min(4, s + 0.25))}>+</button>
         </span>
         <span className="grow">{file?.name}</span>
+        {file && <button className="btn" onClick={closePdf}>Close</button>}
         <IconButton
           label={side === "right" ? "Move sidebar to the left" : "Move sidebar to the right"}
           onClick={() => setSide(side === "right" ? "left" : "right")}
