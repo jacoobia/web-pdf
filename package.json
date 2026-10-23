@@ -6,7 +6,7 @@
   "author": "Jacob Hampton",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jacoobia/quick-pdf.git"
+    "url": "git+https://github.com/jacoobia/web-pdf.git"
   },
   "private": true,
   "type": "module",
