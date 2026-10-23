@@ -1,4 +1,3 @@
-// Reading, previews and saving run here, off the main thread, so the page never waits on MuPDF.
 import type { El, PageInfo, Removed } from "./pdf";
 
 export type WorkerIn =
@@ -13,8 +12,6 @@ export type Replies = {
   export: { pdf: Uint8Array; problems: string[] };
 };
 
-// Loaded dynamically: MuPDF's wasm takes a moment, and a module still loading drops messages sent to it.
-// Listening straight away and awaiting the library inside the handler keeps every message, in order.
 const lib = import("./pdf");
 let bytes: Uint8Array | undefined;
 let preview: import("./pdf").Previewer | undefined;

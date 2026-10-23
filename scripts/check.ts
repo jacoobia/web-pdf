@@ -1,4 +1,3 @@
-// End-to-end check of src/pdf.ts: edit, move, delete, add, then read the output back.
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
 import {
@@ -56,7 +55,6 @@ const shot = renderPage(src, 0, 1, removedOn(els, 0));
 assert.equal(shot.rgba.length, shot.w * shot.h * 4, "renders RGBA pixels");
 assert.deepEqual([shot.w, shot.h], [595, 842]);
 
-// one open document for previews: removals stack up, taking one back reopens; output always matches a fresh render
 {
   const all = extract(src).els.filter((e) => !e.image);
   const removeFirst = (n: number) =>
@@ -94,7 +92,6 @@ for (const t of [
 for (const t of ["Led a team of four", "Cut costs by half"]) assert.ok(!text.includes(t), `"${t}" should be gone`);
 assert.ok(!Buffer.from(pdf).includes("Cut costs"), "old text gone from raw bytes");
 
-// moved line's baseline is 20pt higher (top edge differs: it's redrawn in the fallback font)
 const baseline = (e: El) => e.y + e.ascent * e.size;
 const before = find("Senior Widget Engineer at Acme Ltd");
 const moved = extract(pdf).els.find((e) => e.text.startsWith("Senior"))!;
@@ -103,7 +100,6 @@ assert.ok(
   `moved baseline ${baseline(moved)}`,
 );
 
-// font swapping keeps weight and style
 assert.equal(familyOf("Arial-BoldMT"), "Arial");
 assert.equal(familyOf("Times-BoldItalic"), "Times");
 assert.equal(pickFace("Times", [], true, false), "Times-Bold");
@@ -116,7 +112,6 @@ const arialFaces = ["Arial-Black", "ArialMT", "Arial-BoldMT", "Arial-ItalicMT"];
 assert.equal(pickFace("Arial", arialFaces, true, false), "Arial-BoldMT", "Bold, not Black");
 assert.equal(pickFace("Arial", arialFaces, false, false), "ArialMT");
 
-// Arial has no U+2010: drawn as a plain hyphen instead of a blank box
 const arial = await Bun.file("C:/Windows/Fonts/arial.ttf").bytes();
 const one = extract(src).els;
 Object.assign(one.find((e) => e.text === "Led a team of four.")!, { text: "Led 2019\u20102024", font: fontKey(arial) });
@@ -124,17 +119,15 @@ const fixed = await exportPdf(src, one, new Map([[fontKey(arial), arial]]));
 assert.deepEqual(fixed.problems, []);
 assert.ok(extract(fixed.pdf).els.some((e) => e.text === "Led 2019-2024"));
 
-// snapping: left edges and baselines line up, far-off targets are ignored
 const box = { l: 10, r: 50, t: 100, b: 112, base: 110 };
 const other = { l: 40, r: 90, t: 196, b: 214, base: 210 };
-let s = snap(box, [other], 31, 98, 3, 595); // l 41 -> 40, base 208 -> 210
+let s = snap(box, [other], 31, 98, 3, 595);
 assert.deepEqual([s.dx, s.dy, s.guides], [30, 100, { x: 40, y: 210 }]);
 s = snap(box, [other], 0, 0, 3, 595);
 assert.deepEqual([s.dx, s.dy, s.guides], [0, 0, { x: undefined, y: undefined }]);
-s = snap(box, [], 268, 0, 3, 595); // centre 298 -> page centre 297.5
+s = snap(box, [], 268, 0, 3, 595);
 assert.equal(s.guides.x, 297.5);
 
-// header and footer: page numbers filled in, right-aligned text ends at the margin
 const hfCfg = {
   header: ["", "", "Jane Example CV"],
   footer: ["", "Page {page} of {pages}", ""],
@@ -156,7 +149,6 @@ const centre = withHf.find((e) => e.text === "Page 1 of 1")!.orig!.rect;
 assert.ok(Math.abs(centre.x + centre.w / 2 - 595 / 2) < 1, `centre ${centre.x + centre.w / 2}`);
 assert.equal(headerFooterEls({ ...hfCfg, skipFirst: true }, pages).length, 0, "only page is skipped");
 
-// images: deleting one keeps the text under it; moving one redraws it there
 const imgs = (els: El[]) => els.filter((e) => e.image);
 assert.equal(imgs(extract(pdf).els).length, 1, "untouched image survives text edits");
 const del = extract(src).els;
@@ -176,14 +168,12 @@ assert.deepEqual(
   "moved image lands at the new spot",
 );
 
-// margin: moves stop at the edge, an oversized box pins top-left
 const area = { l: 36, t: 36, r: 559, b: 806 };
 assert.deepEqual(confine(box, -100, 0, area), [26, 0], "left edge stops at 36");
 assert.deepEqual(confine(box, 600, 800, area), [509, 694], "right/bottom edges stop inside");
 assert.deepEqual(confine({ l: 0, r: 700, t: 50, b: 60, base: 0 }, 5, 0, area), [36, 0], "too wide pins left");
 
-// wrapping: word wrap, long words split, and the saved file breaks lines in the same places
-const mono = (t: string) => t.length * 10; // 10pt per character
+const mono = (t: string) => t.length * 10;
 assert.deepEqual(wrapLines("aaa bbb ccc", 75, mono), ["aaa bbb", "ccc"]);
 assert.deepEqual(wrapLines("abcdefghij", 40, mono), ["abcd", "efgh", "ij"]);
 assert.deepEqual(wrapLines("one\ntwo", undefined, mono), ["one", "two"]);

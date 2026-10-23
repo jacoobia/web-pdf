@@ -24,24 +24,17 @@
     "rules": {
       "recommended": true,
       "style": {
-        // Later, less specific rules don't override earlier, more specific ones here; the order is fine.
         "noDescendingSpecificity": "off",
-        // Non-null assertions mark lookups that the surrounding code has already checked.
         "noNonNullAssertion": "off"
       },
-      // The drag and layout loops use comma and assignment expressions on purpose, to keep them short.
       "complexity": { "noCommaOperator": "off" },
       "suspicious": {
         "noAssignInExpressions": "off",
-        // Index keys here are page numbers or fixed lines of text, which never reorder.
         "noArrayIndexKey": "off"
       },
       "a11y": {
-        // There are no forms, so a button can't submit anything by accident.
         "useButtonType": "off",
-        // Page elements are dragged with the pointer; the keyboard path is the edit panel and shortcuts.
         "noStaticElementInteractions": "off",
-        // Segmented controls and swatches are ARIA radio and tab widgets built on buttons, on purpose.
         "useSemanticElements": "off"
       }
     }

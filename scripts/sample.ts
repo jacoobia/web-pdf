@@ -1,5 +1,3 @@
-// Builds a small CV-like PDF with a subset-embedded TTF, for scripts/check.ts.
-
 import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -16,11 +14,9 @@ export async function makeSample(): Promise<Uint8Array> {
   page.drawText("Jane Example", { x: 40, y: 780, size: 24, font: bold });
   page.drawText("Senior Widget Engineer at Acme Ltd", { x: 40, y: 730, size: 12, font: sans });
   page.drawText("2019 - 2024", { x: 480, y: 730, size: 12, font: sans });
-  // a 60x30 image overlapping the dates, to prove image and text removal stay separate
   const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 20, 10], false);
   pix.clear(200);
   page.drawImage(await doc.embedPng(pix.asPNG()), { x: 470, y: 720, width: 60, height: 30 });
-  // tight 13pt leading at 12pt, to prove removing one line leaves its neighbours alone
   page.drawText("Built widgets for 5 years.", { x: 40, y: 712, size: 12, font: sans, color: rgb(0.3, 0.3, 0.3) });
   page.drawText("Led a team of four.", { x: 40, y: 699, size: 12, font: sans });
   page.drawText("Cut costs by half.", { x: 40, y: 686, size: 12, font: sans });
@@ -33,7 +29,6 @@ const WORDS = (
   "architecture reviews standards stakeholders metrics dashboards features subscriptions onboarding"
 ).split(" ");
 
-/** A 4-page, two-column CV in Calibri with header images: a realistic size for checking editor speed. */
 export async function makeLargeSample(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
@@ -67,7 +62,6 @@ export async function makeLargeSample(): Promise<Uint8Array> {
       });
       y -= 24;
     }
-    // right column: skills-style lists
     for (let row = 0, ry = p === 0 ? 650 : 740; row < 30; row++, ry -= 18)
       page.drawText(row % 6 === 0 ? "SECTION" : sentence(6), {
         x: 330,
@@ -81,7 +75,6 @@ export async function makeLargeSample(): Promise<Uint8Array> {
   return doc.save();
 }
 
-/** Noise photo: barely compresses, so each one is a few MB like a real camera image. */
 function photo(w: number, h: number, seed: number): Uint8Array {
   const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, w, h], false);
   const px = pix.getPixels();
@@ -89,7 +82,6 @@ function photo(w: number, h: number, seed: number): Uint8Array {
   return pix.asJPEG(92);
 }
 
-/** 60 dense pages with vector tables and six large photos: for finding where the editor gets slow. */
 export async function makeHeavySample(): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
@@ -107,7 +99,6 @@ export async function makeHeavySample(): Promise<Uint8Array> {
     const top = p % 10 === 3 ? 505 : 730;
     for (let col = 0; col < 2; col++)
       for (let y = top; y > 250; y -= 11) page.drawText(sentence(7), { x: 36 + col * 280, y, size: 8.5, font: sans });
-    // a 6x8 table of vector lines and cells
     for (let r = 0; r <= 8; r++)
       page.drawLine({ start: { x: 36, y: 230 - r * 22 }, end: { x: 576, y: 230 - r * 22 }, color: line });
     for (let c = 0; c <= 6; c++)
