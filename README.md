@@ -1,3 +1,5 @@
+<div align="center">
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/header-dark.png">
   <img alt="Web PDF" src="docs/images/header-light.png" width="840">
@@ -5,10 +7,26 @@
 
 A PDF editor that runs in your browser. Files are edited locally and never uploaded.
 
-<p>
-  <img alt="Editing a CV in the dark theme, with page thumbnails and the edit panel" src="docs/images/editor-dark.png" width="72%">
-  <img alt="The editor on a phone, with the edit panel open as a sheet" src="docs/images/editor-phone.png" width="25%">
-</p>
+[![CI](https://img.shields.io/github/actions/workflow/status/jacoobia/web-pdf/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/jacoobia/web-pdf/actions/workflows/ci.yml)
+[![Licence](https://img.shields.io/badge/licence-AGPL--3.0-0F766E?style=flat-square)](LICENSE)
+[![React](https://img.shields.io/badge/React_19-0F766E?style=flat-square&logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-0F766E?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Bun](https://img.shields.io/badge/Bun-0F766E?style=flat-square&logo=bun&logoColor=white)](https://bun.sh)
+
+[Features](#features) · [Browser support](#browser-support) · [Getting started](#getting-started) · [Deploying](#deploying) · [Contributing](#contributing)
+
+</div>
+
+<table>
+  <tr>
+    <td width="74%"><img alt="Editing a CV in the dark theme, with page thumbnails and the edit panel" src="docs/images/editor-dark.png"></td>
+    <td width="26%"><img alt="The editor on a phone, with the edit panel open as a sheet" src="docs/images/editor-phone.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Desktop</sub></td>
+    <td align="center"><sub>Phone</sub></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -19,11 +37,23 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Undo, redo, multi-select and a right-click menu.
 - Light and dark themes, and a layout that works on phones.
 
-PDFs are read and rendered with [MuPDF](https://mupdf.com) in a web worker, and new text is written with [pdf-lib](https://pdf-lib.js.org). Only the text you change is redrawn; the rest of the file is kept as it was.
+### How it works
+
+| | |
+| --- | --- |
+| Reading and rendering | [MuPDF](https://mupdf.com), in a web worker |
+| Writing new text | [pdf-lib](https://pdf-lib.js.org) |
+| Saving | Only the text you change is redrawn; the rest of the file is kept as it was. |
 
 ## Browser support
 
-Tested in Chrome and Brave, and it should work in any current browser. Chrome and Edge can also save back over the original file and load fonts installed on your computer. Firefox and Safari save the edited PDF as a download instead.
+| | Chrome, Edge | Firefox, Safari |
+| --- | :---: | :---: |
+| Edit and save PDFs | ✓ | ✓ |
+| Save back over the original file | ✓ | Saves as a download |
+| Load fonts installed on your computer | ✓ | |
+
+<sub>Tested in Chrome and Brave.</sub>
 
 ## Getting started
 
@@ -35,8 +65,6 @@ cd web-pdf
 bun install
 bun run dev
 ```
-
-## Scripts
 
 | Command | Description |
 | --- | --- |
