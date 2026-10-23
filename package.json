@@ -1,6 +1,6 @@
 {
   "name": "web-pdf",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A PDF editor that runs entirely in your browser.",
   "license": "AGPL-3.0-or-later",
   "author": "Jacob Hampton",

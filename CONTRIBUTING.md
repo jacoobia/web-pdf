@@ -18,7 +18,7 @@ The pre-commit hook runs Biome on staged files and the typechecker. Commit messa
 
 ## Code style
 
-Biome handles formatting and linting; `bun run format` fixes most of what it reports. Beyond that, match the code around your change. Comments explain why something is done, not what the next line does.
+Biome handles formatting and linting; `bun run format` fixes most of what it reports. Beyond that, match the code around your change and keep it readable without comments.
 
 ## Licence
 
