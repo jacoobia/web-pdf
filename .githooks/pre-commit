@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lint and format-check the staged files, then typecheck the project.
+bunx biome check --staged --no-errors-on-unmatched || exit 1
+bunx tsc --noEmit

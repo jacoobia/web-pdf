@@ -17,7 +17,8 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
-    "test": "bun scripts/check.ts"
+    "test": "bun scripts/check.ts",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "5.2.5",
@@ -34,5 +35,8 @@
     "@vitejs/plugin-react": "^6.1.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
+  },
+  "engines": {
+    "bun": ">=1.2"
   }
 }

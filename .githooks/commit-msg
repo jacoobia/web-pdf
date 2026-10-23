@@ -1,0 +1,8 @@
+#!/bin/sh
+# One short summary line, nothing else.
+msg=$(grep -v '^#' "$1" | sed '/^[[:space:]]*$/d')
+lines=$(printf '%s\n' "$msg" | wc -l)
+if [ "$lines" -ne 1 ] || [ "${#msg}" -gt 72 ]; then
+  echo "Commit message must be a single line of 72 characters or fewer." >&2
+  exit 1
+fi
