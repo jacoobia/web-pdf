@@ -1,10 +1,16 @@
 #!/bin/sh
-msg=$(grep -v '^#' "$1" | sed '/^[[:space:]]*$/d')
-lines=$(printf '%s\n' "$msg" | wc -l)
 types='feat|fix|perf|refactor|docs|test|chore|ci|build|style|revert'
-if [ "$lines" -ne 1 ] || [ "${#msg}" -gt 72 ] ||
-  ! printf '%s' "$msg" | grep -Eq "^($types)(\([a-z0-9-]+\))?: [^A-Z]+$"; then
-  echo "Commit message must be one lower-case line of 72 characters or fewer, like \"fix: wrap long words\"." >&2
-  echo "Types: $types" | tr '|' ' ' >&2
-  exit 1
-fi
+grep -v '^#' "$1" | awk -v types="$types" '
+  { lines[NR] = $0 }
+  END {
+    n = NR
+    while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+    s = lines[1]
+    if (length(s) > 72 || s !~ ("^(" types ")([(][a-z0-9-]+[)])?: [^A-Z]+$")) exit 1
+    if (n > 1 && lines[2] != "") exit 1
+    for (i = 3; i <= n; i++) if (lines[i] !~ /^[A-Za-z][A-Za-z-]*: .+/) exit 1
+  }
+' && exit 0
+echo "Commit message must be one lower-case line of 72 characters or fewer, like \"fix: wrap long words\"." >&2
+echo "Trailers such as Co-Authored-By may follow after a blank line. Types: $types" | tr '|' ' ' >&2
+exit 1
