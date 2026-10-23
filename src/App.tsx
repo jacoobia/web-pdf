@@ -33,7 +33,6 @@ import type { Replies, WorkerIn } from "./render.worker";
 import { type Area, type Box, confine, type Guides, snap } from "./snap";
 import { DEFAULT_PREFS, Group, Icon, type Prefs, Segmented, Settings, SourceLink, Tool } from "./ui";
 
-// Where the first baseline sits inside a CSS line box, as a fraction of font size (0.95 at line-height 1.2).
 const cssBaseline = (lineHeight: number) => 0.35 + lineHeight / 2;
 
 const cssFont = (key: string) => {
@@ -43,7 +42,6 @@ const cssFont = (key: string) => {
     : { fontFamily: `"pf-${key}"`, fontWeight: 400, fontStyle: "normal" };
 };
 
-/** useState that survives reloads. Storage can be blocked, so it's best-effort. */
 function usePref(key: string, initial: string) {
   const [value, setValue] = useState(() => {
     try {
@@ -68,15 +66,12 @@ const TABS = [
 
 const PDF_TYPE = { description: "PDF", accept: { "application/pdf": [".pdf"] } };
 
-// Recently opened. Browsers never reveal file paths, so names and dates go in localStorage. IndexedDB holds what
-// reopening needs: the file handle (Chrome/Edge: reopens the live file) and a copy of the PDF (any browser:
-// used when there's no handle, or the file moved, or access was refused).
 type Recent = { name: string; openedAt: number; handle: boolean; copy?: boolean };
-const COPY_LIMIT = 50 * 1024 * 1024; // bigger PDFs aren't copied, to keep browser storage in check
+const COPY_LIMIT = 50 * 1024 * 1024;
 const readRecent = (): Recent[] => {
   try {
     const list: Recent[] = JSON.parse(localStorage.getItem("recent") ?? "[]");
-    return list.filter((r) => typeof r?.name === "string" && r.name.trim()); // drop anything saved without a name
+    return list.filter((r) => typeof r?.name === "string" && r.name.trim());
   } catch {
     return [];
   }
@@ -102,7 +97,6 @@ const unstore = (name: string) => {
 const openedAt = (t: number) => new Date(t).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 type LocalFont = { postscriptName: string; blob(): Promise<Blob> };
-// Chromium-only APIs that TypeScript's DOM types don't include yet.
 type PickerOptions = { suggestedName?: string; startIn?: unknown; types: (typeof PDF_TYPE)[] };
 const chromium = window as unknown as {
   queryLocalFonts(): Promise<LocalFont[]>;
@@ -121,7 +115,6 @@ const drawnStyle = (el: El, scale: number) => ({
   ...cssFont(el.font),
 });
 
-// Same wrapping code and font metrics as the saved file, so the preview breaks lines where the PDF will.
 const shownText = (el: El, fonts: Map<string, Uint8Array>) =>
   el.wrap ? wrapLines(el.text, el.wrap, (t) => measure(el.font, fonts)(t, el.size)).join("\n") : el.text;
 
@@ -130,13 +123,13 @@ type ElHandlers = {
   move(e: RPointerEvent): void;
   up(): void;
   focusText(): void;
+  focus(el: El): void;
   resizeStart(e: RPointerEvent): void;
   resizeMove(e: RPointerEvent, el: El): void;
   resizeEnd(): void;
   unwrap(id: string): void;
 };
 
-/** One item on the page. Memoised: while dragging, only the items that actually moved re-render. */
 const ElView = memo(function ElView({
   el,
   scale,
@@ -173,6 +166,12 @@ const ElView = memo(function ElView({
       onPointerMove={on.move}
       onPointerUp={on.up}
       onDoubleClick={on.focusText}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={el.image ? "Image" : el.text}
+      onFocus={() => on.focus(el)}
+      onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), on.focusText())}
     >
       {el.image
         ? dirty && imageSrc && <img src={imageSrc} alt="" draggable={false} />
@@ -196,7 +195,6 @@ const ElView = memo(function ElView({
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 export default function App() {
-  // `handle` (Chrome/Edge) lets the save dialog open in the folder the PDF came from.
   const [file, setFile] = useState<{ name: string; handle?: FileSystemFileHandle } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [els, setEls] = useState<El[]>([]);
@@ -207,7 +205,6 @@ export default function App() {
   const [report, setReport] = useState<{ ok: boolean; lines: string[]; busy?: boolean } | null>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
   const [recent, setRecent] = useState(readRecent);
-  // ponytail: keyed by file name, so two different files with the same name share one entry
   const saveRecent = (list: Recent[]) => {
     setRecent(list);
     try {
@@ -215,7 +212,7 @@ export default function App() {
     } catch {}
   };
   const remember = (name: string, handle?: FileSystemFileHandle, file?: File) => {
-    if (!name?.trim()) return; // nothing to show or find it by
+    if (!name?.trim()) return;
     const old = recent.find((r) => r.name === name);
     const copy = !!file && file.size <= COPY_LIMIT;
     const next = [
@@ -225,7 +222,6 @@ export default function App() {
     for (const gone of next.slice(8)) unstore(gone.name);
     saveRecent(next.slice(0, 8));
     if (handle) stored("handles", "readwrite", (s) => s.put(handle, name)).catch(() => {});
-    // The bytes themselves: storing the File can keep only a reference to it on disk, which dies with the file.
     if (copy)
       file
         .arrayBuffer()
@@ -236,7 +232,6 @@ export default function App() {
     saveRecent(recent.filter((r) => r.name !== name));
     unstore(name);
   };
-  /** The live file if the browser allows it, otherwise the copy saved when it was last opened, otherwise the picker. */
   const reopen = async (r: Recent) => {
     try {
       const h = r.handle
@@ -252,10 +247,10 @@ export default function App() {
           (await perm.requestPermission({ mode: "read" })) === "granted")
       ) {
         const live = await h.getFile();
-        await live.slice(0, 1).arrayBuffer(); // a moved or deleted file only fails when read, so check before choosing it
+        await live.slice(0, 1).arrayBuffer();
         return await openPdf(live, h);
       }
-    } catch {} // moved, renamed, deleted, or access refused: try the copy
+    } catch {}
     const copy = r.copy
       ? await stored<Blob | undefined>("files", "readonly", (s) => s.get(r.name)).catch(() => undefined)
       : undefined;
@@ -269,7 +264,6 @@ export default function App() {
         ],
       });
   };
-  // Appearance and editing preferences; the Settings window edits them all.
   const [themePref, setThemePref] = usePref("theme", DEFAULT_PREFS.theme);
   const [uiStyle, setUiStyle] = usePref("uiStyle", DEFAULT_PREFS.uiStyle);
   const [accent, setAccent] = usePref("accent", DEFAULT_PREFS.accent);
@@ -284,7 +278,6 @@ export default function App() {
   }, []);
   const theme = themePref === "system" ? (systemDark ? "dark" : "light") : themePref;
   useEffect(() => void (document.documentElement.dataset.theme = theme), [theme]);
-  // The accent drives a few derived colours: tints for selection, and readable text on top of it.
   useEffect(() => {
     const hex = /^#[0-9a-f]{6}$/i.test(accent) ? accent : DEFAULT_PREFS.accent;
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -315,8 +308,6 @@ export default function App() {
   });
 
   const elsRef = useRef<El[]>([]);
-  // Grouped once per change: with thousands of items, filtering per page on every drag step was the cost.
-  // A page whose items didn't change keeps its previous array, so its cached view can be reused.
   const pageArrays = useRef(new Map<number, El[]>());
   const byPage = useMemo(() => {
     const m = new Map<number, El[]>();
@@ -329,7 +320,6 @@ export default function App() {
     return m;
   }, [els]);
   const elById = useMemo(() => new Map(els.map((e) => [e.id, e])), [els]);
-  // Pages within a screen of the viewport. Only these get item views and previews.
   const [near, setNear] = useState(new Set([0, 1, 2]));
   const pageObserver = useRef<IntersectionObserver | null>(null);
   const observePage = (div: HTMLDivElement | null) => {
@@ -352,7 +342,6 @@ export default function App() {
   const past = useRef<El[][]>([]);
   const future = useRef<El[][]>([]);
   const lastTouch = useRef("");
-  // Page previews come from a worker; `wanted` holds the latest request per page so stale results are dropped.
   const worker = useRef<Worker | null>(null);
   const canvases = useRef(new Map<number, HTMLCanvasElement>());
   const wanted = useRef(new Map<number, string>());
@@ -376,7 +365,6 @@ export default function App() {
   const pending = useRef(new Map<number, (r: { error?: string }) => void>());
   const nextId = useRef(0);
   const post = (msg: WorkerIn, transfer: Transferable[] = []) => worker.current?.postMessage(msg, { transfer });
-  /** Ask the worker for something and wait for its reply. */
   const request = <T extends keyof Replies>(
     msg: Omit<Extract<WorkerIn, { type: T }>, "id">,
     transfer: Transferable[] = [],
@@ -424,7 +412,6 @@ export default function App() {
     worker.current = w;
     return () => w.terminate();
   }, []);
-  // Moved images need their pixels; the worker decodes each one the first time it's asked (null = on its way).
   const imageUrls = useRef(new Map<string, string | null>());
   const [imageVersion, imageLoaded] = useState(0);
   const imageUrl = (img: NonNullable<El["image"]>) => {
@@ -465,7 +452,6 @@ export default function App() {
   const [band, setBand] = useState<{ page: number; l: number; r: number; t: number; b: number } | null>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
 
-  // `touch` groups rapid edits (typing, dragging) into one undo step.
   const commit = (next: El[], touch = "") => {
     future.current = [];
     if (!touch || touch !== lastTouch.current) {
@@ -497,7 +483,6 @@ export default function App() {
     elsRef.current = next;
     setEls(next);
   };
-  // Copies are new content: no original to remove, drawn fresh on save.
   const addCopies = (src: El[], dx: number, dy: number, page?: number) => {
     const copies = src.map(({ orig: _o, deleted: _d, ...e }) => ({
       ...e,
@@ -509,7 +494,6 @@ export default function App() {
     commit([...elsRef.current, ...copies]);
     setSel(copies.map((c) => c.id));
   };
-  // `synced`: the text also made it onto the system clipboard, so a different clipboard text means a newer copy.
   const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
   const pasteTimer = useRef(0);
 
@@ -522,7 +506,6 @@ export default function App() {
     setSel([]);
   };
 
-  /** Use `key` whenever text originally in font `src` is redrawn. Untouched text stays untouched. */
   const fontForSource = (list: El[], src: string, key: string) =>
     list.map((e) =>
       e.srcFont && compact(e.srcFont) === compact(src)
@@ -530,20 +513,18 @@ export default function App() {
         : e,
     );
 
-  // What was last opened or saved; anything else counts as unsaved. Undoing back to it counts as saved again.
   const saved = useRef<{ els: El[]; hf: HeaderFooter | null }>({ els: [], hf: null });
   const unsaved = () => elsRef.current !== saved.current.els || hf !== saved.current.hf;
 
   const clearPreviews = () => {
     for (const url of imageUrls.current.values()) if (url) URL.revokeObjectURL(url);
     imageUrls.current.clear();
-    clip.current = null; // copied images point into the old file
+    clip.current = null;
     wanted.current.clear();
     for (const c of canvases.current.values()) c.width = 0;
     thumbsAsked.current.clear();
     for (const c of thumbCanvases.current.values()) c.width = 0;
     setThumbNear(new Set());
-    // A new observer re-reports every slot as visible; the old one would stay silent for slots it already saw.
     thumbObserver.current?.disconnect();
     thumbObserver.current = null;
   };
@@ -567,7 +548,6 @@ export default function App() {
       setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
       clearPreviews();
-      // Read in the worker, which keeps the bytes for previews and saving.
       const { pages, els } = await request<"open">({ type: "open", bytes }, [bytes.buffer]);
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
@@ -633,11 +613,9 @@ export default function App() {
     const targets = elsRef.current.filter(
       (e) => !e.image && !e.deleted && (swap.scope === "all" || e.page === +swap.scope),
     );
-    // added text has no source style, so read weight/style off its current font
     const style = (e: El) => [e.orig ? e.bold : isBoldName(e.font), e.orig ? e.italic : isItalicName(e.font)] as const;
     const keys = [...fonts.keys()];
     if (!families.includes(swap.family)) {
-      // Installed but not loaded: load only the faces this text needs.
       const faces = installed.filter((f) => familyOf(f.postscriptName) === swap.family);
       const names = faces.map((f) => f.postscriptName);
       for (const name of new Set(targets.map((e) => pickFace(swap.family, names, ...style(e))))) {
@@ -645,14 +623,12 @@ export default function App() {
         const key = await addFont(new Uint8Array(await (await face.blob()).arrayBuffer()), name);
         if (key) keys.push(key);
       }
-      if (!keys.some((k) => familyOf(k) === swap.family)) return; // addFont has said why
+      if (!keys.some((k) => familyOf(k) === swap.family)) return;
     }
     const ids = new Set(targets.map((e) => e.id));
     commit(elsRef.current.map((e) => (ids.has(e.id) ? { ...e, font: pickFace(swap.family, keys, ...style(e)) } : e)));
   };
 
-  // Chrome/Edge only: pull exact matches from fonts installed on this PC.
-  // `auto` runs straight after opening a PDF; the browser may refuse without a click, so stay quiet on failure.
   async function findInstalled(wanted: string[], auto = false) {
     try {
       const local = await loadInstalledList();
@@ -693,7 +669,6 @@ export default function App() {
   const save = async () => {
     if (!file) return;
     const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-edited.pdf`;
-    // Ask where first: the picker needs the click's user activation, which an export could outlast.
     let target: FileSystemFileHandle | undefined;
     if ("showSaveFilePicker" in window) {
       const pick = (startIn: unknown) => chromium.showSaveFilePicker({ suggestedName, startIn, types: [PDF_TYPE] });
@@ -709,7 +684,6 @@ export default function App() {
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
       const snapshot = { els: elsRef.current, hf };
-      // Built in the worker, so the page (and the spinner) keep going while it saves.
       const { pdf, problems } = await request<"export">({ type: "export", els: [...snapshot.els, ...hfEls], fonts });
       if (target) {
         const out = await target.createWritable();
@@ -723,7 +697,6 @@ export default function App() {
         setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
       }
       saved.current = snapshot;
-      // Without a save picker the browser takes over (and may ask where to save), so don't claim it's saved.
       const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
       setReport(
         problems.length
@@ -741,14 +714,12 @@ export default function App() {
     return () => clearTimeout(t);
   }, [report]);
 
-  // Ask for a new page preview only when the set of removed originals on it (or the zoom) changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: post is stable
   useEffect(() => {
     if (!file) return;
     const t = setTimeout(() => {
       pages.forEach((_, p) => {
         if (!near.has(p)) {
-          // Off screen: free its pixels (about 4MB a page); it re-renders when it comes back.
           if (wanted.current.delete(p)) canvases.current.get(p)!.width = 0;
           return;
         }
@@ -779,9 +750,7 @@ export default function App() {
       }
   }, [file, uiStyle, thumbNear]);
 
-  // Which page is at the top of the view, for the thumbnail rail.
   const pagesRef = useRef<HTMLElement>(null);
-  // Floating panels sit over the scrolling canvas; tell CSS how much room its scrollbars take so they stay clear.
   // biome-ignore lint/correctness/useExhaustiveDependencies: these change the scroll area's size, so re-measure on them
   useEffect(() => {
     const m = pagesRef.current;
@@ -793,7 +762,7 @@ export default function App() {
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(m);
-    for (const child of m.children) ro.observe(child); // content growing past the edge adds a scrollbar
+    for (const child of m.children) ro.observe(child);
     return () => ro.disconnect();
   }, [file, pages, scale, uiStyle]);
   const [currentPage, setCurrentPage] = useState(0);
@@ -814,7 +783,6 @@ export default function App() {
   };
   const zoomBy = (d: number) => setScale((s) => Math.max(0.5, Math.min(4, Math.round((s + d) * 100) / 100)));
 
-  // Shared by the keyboard shortcuts and the context menu.
   type At = { page: number; x: number; y: number };
   const copySel = (cut = false) => {
     if (!selected.length) return;
@@ -829,7 +797,6 @@ export default function App() {
     );
     if (cut) remove(sel);
   };
-  /** At a point, the group's top-left lands there; otherwise each paste steps 10pt further. */
   const pasteCopied = (at?: At) => {
     const c = clip.current;
     if (!c) return;
@@ -843,7 +810,6 @@ export default function App() {
     c.pastes++;
     addCopies(c.els, 10 * c.pastes, 10 * c.pastes, selected[0]?.page);
   };
-  /** Text from another app becomes new text: at a point, under the selected text, or at the top of page 1. */
   const pasteText = (text: string, at?: At) => {
     const like = selected.find((x) => !x.image);
     const top = margin ?? 36;
@@ -874,7 +840,6 @@ export default function App() {
     patch(sel, (e) =>
       e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false, wrap: undefined, lineHeight: undefined } : {},
     );
-  /** Join selected lines into one wrapping text box, in reading order, keeping their line spacing. */
   const mergeSel = () => {
     const base = (e: El) => e.y + e.ascent * e.size;
     const page = selected.find((e) => !e.image)?.page;
@@ -922,7 +887,6 @@ export default function App() {
       const mod = e.ctrlKey || e.metaKey,
         key = e.key.toLowerCase();
       if (mod && key === "a") return e.preventDefault(), selectAll();
-      // Not every browser sends a paste event outside text boxes; if none arrives, paste our own copies.
       if (mod && key === "v") return void (pasteTimer.current = window.setTimeout(() => pasteCopied(), 0));
       if (!sel.length) return;
       if (mod && (key === "c" || key === "x")) return copySel(key === "x");
@@ -932,7 +896,6 @@ export default function App() {
       const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
       if (d) {
         e.preventDefault();
-        // Per page, so the margin stops the whole selection on that page together.
         const moves = new Map<number, [number, number]>();
         for (const p of new Set(selected.map((x) => x.page))) {
           const area = inside(p);
@@ -954,14 +917,12 @@ export default function App() {
       }
     };
     const onLeave = (e: BeforeUnloadEvent) => file && unsaved() && e.preventDefault();
-    // Only needed for text copied in another app; our own copies paste from `clip`.
     const onPaste = (e: ClipboardEvent) => {
       if (isTyping(e.target) || !file) return;
       clearTimeout(pasteTimer.current);
       e.preventDefault();
       const text = e.clipboardData?.getData("text/plain") ?? "";
       const c = clip.current;
-      // Windows turns line breaks into CRLF on the clipboard, so compare ignoring line endings.
       const same = (t: string) => t.replace(/\r\n?/g, "\n").trim() === c?.text.trim();
       if (text.trim() && (!c || (c.synced && !same(text)))) pasteText(text);
       else pasteCopied();
@@ -976,12 +937,10 @@ export default function App() {
     };
   });
 
-  // Measured from what's on screen, since redrawn text's width depends on the browser's font rendering.
   const boxOf = (x: El): Box => {
     const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
     const l = n ? n.offsetLeft / scale : x.x,
       t = n ? n.offsetTop / scale : x.y;
-    // Images have no baseline; NaN never matches, so they snap by edges only.
     const base = x.image ? NaN : x.y + x.ascent * x.size;
     return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base };
   };
@@ -989,7 +948,6 @@ export default function App() {
   const onElDown = (e: RPointerEvent, el: El) => {
     if (adding || e.button !== 0) return e.button === 2 && e.stopPropagation();
     e.stopPropagation();
-    // Shift/Ctrl+click adds at once (so the group can be dragged); removing waits for a click without a drag.
     const mod = e.shiftKey || e.ctrlKey || e.metaKey;
     const ids = sel.includes(el.id) ? sel : mod ? [...sel, el.id] : [el.id];
     setSel(ids);
@@ -1025,7 +983,6 @@ export default function App() {
     const rawX = (e.clientX - d.x) / scale,
       rawY = (e.clientY - d.y) / scale;
     if (Math.abs(rawX) + Math.abs(rawY) < 2 / scale && lastTouch.current !== d.touch) return;
-    // Shift: free move. Ctrl: whole-point steps (alignment snapping would land on fractions). Otherwise snap.
     const whole = e.ctrlKey || e.metaKey;
     const s = e.shiftKey
       ? { dx: rawX, dy: rawY, guides: {} as Guides }
@@ -1036,10 +993,8 @@ export default function App() {
           : { dx: rawX, dy: rawY, guides: {} as Guides };
     const area = inside(d.page);
     const [dx, dy] = area ? confine(d.box, s.dx, s.dy, area) : [s.dx, s.dy];
-    // A guide only means something if the margin didn't overrule it.
     const guides = { x: dx === s.dx ? s.guides.x : undefined, y: dy === s.dy ? s.guides.y : undefined };
     setGuides({ page: d.page, ...guides });
-    // Snapped, whole-step and margin-stopped moves stay exact; free ones round to 0.1pt.
     const r = (n: number, exact: boolean) => (exact ? n : Math.round(n * 10) / 10);
     patch(
       [...d.start.keys()],
@@ -1057,7 +1012,6 @@ export default function App() {
     setGuides(null);
   };
 
-  // Box selection: drag across empty page space. Shift/Ctrl adds to the current selection.
   const onPageDown = (e: RPointerEvent, page: number) => {
     if (e.button !== 0) return;
     if (!adding) {
@@ -1075,7 +1029,7 @@ export default function App() {
       e.currentTarget.setPointerCapture(e.pointerId);
       return;
     }
-    e.preventDefault(); // otherwise the click's mousedown steals focus from the new text box
+    e.preventDefault();
     const box = e.currentTarget.getBoundingClientRect();
     addTextAt({ page, x: (e.clientX - box.left) / scale, y: (e.clientY - box.top) / scale });
   };
@@ -1131,7 +1085,6 @@ export default function App() {
 
   const selSet = new Set(sel);
   const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
-  // Selecting text brings its settings into view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: open the panel when a selection starts, not on every change to it
   useEffect(() => void (sel.length && (setTab("edit"), setPanelOpen(true))), [sel.length > 0]);
   const one = selected.length === 1 ? selected[0] : null;
@@ -1142,13 +1095,13 @@ export default function App() {
   const [font, size, color] = [shared("font"), shared("size"), shared("color")];
   const rotated = pages.some((p) => p.rotated);
 
-  // Handlers read the latest state through a ref, so ElView's props stay stable between renders.
   const live = useRef<ElHandlers>(null!);
   live.current = {
     down: onElDown,
     move: onElMove,
     up: endDrag,
     focusText: () => (textBox.current?.focus(), textBox.current?.select()),
+    focus: (el) => sel.includes(el.id) || setSel([el.id]),
     resizeStart: (e) => {
       e.stopPropagation();
       if (e.button !== 0) return;
@@ -1170,6 +1123,7 @@ export default function App() {
       move: (e) => live.current.move(e),
       up: () => live.current.up(),
       focusText: () => live.current.focusText(),
+      focus: (el) => live.current.focus(el),
       resizeStart: (e) => live.current.resizeStart(e),
       resizeMove: (e, el) => live.current.resizeMove(e, el),
       resizeEnd: () => live.current.resizeEnd(),
@@ -1178,8 +1132,6 @@ export default function App() {
     [],
   );
 
-  // Reuse each item's React element until the item, its selection state, the zoom or the fonts change.
-  // Even memoised components cost something to describe; with hundreds of items that was most of a drag frame.
   const views = useRef(new WeakMap<El, { key: string; fonts: Map<string, Uint8Array>; node: ReactElement }>());
   const viewOf = (el: El) => {
     const selectedNow = selSet.has(el.id),
@@ -1204,7 +1156,6 @@ export default function App() {
     return node;
   };
 
-  // Page handlers go through a ref too, so a reused page view never acts on stale state.
   const pageLive = useRef({
     down: onPageDown,
     move: onPageMove,
@@ -1238,7 +1189,6 @@ export default function App() {
     }),
     [],
   );
-  // Selection signature per page: a page's view only changes when selection on that page changes.
   const selByPage = new Map<number, string>();
   for (const id of sel) {
     const e = elById.get(id);
@@ -1290,7 +1240,6 @@ export default function App() {
         )}
         {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
         {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
-        {/* images first, so text drawn over them stays clickable */}
         {isNear &&
           (byPage.get(p) ?? [])
             .filter((el) => !el.deleted)
@@ -1713,12 +1662,10 @@ export default function App() {
 
   return (
     <div
-      // Plain classes, not CSS :has(), which Chrome re-checks on every keystroke in a large document.
       className={`app ${canvasStyle ? "style-canvas" : "style-toolbar"} side-${side} ${file ? "has-file" : "no-file"}${canvasStyle && file && panelOpen ? " panel-open" : ""}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        // Handles must be requested before the drop event ends.
         const handles = [...e.dataTransfer.items].map((i) =>
           (
             i as DataTransferItem & { getAsFileSystemHandle?(): Promise<FileSystemHandle | null> }
@@ -1971,7 +1918,6 @@ export default function App() {
                 ref={menuRef}
                 role="menu"
                 className="menu"
-                // keep it on screen: ~31px per item
                 style={{
                   left: Math.min(menu.left, innerWidth - 244),
                   top: Math.min(menu.top, innerHeight - items.length * 31 - 12),
