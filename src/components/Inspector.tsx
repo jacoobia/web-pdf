@@ -14,7 +14,12 @@ const TABS = [
 export function Inspector({ editor }: { editor: Editor }) {
   const { tab, setTab, panelOpen } = editor;
   return (
-    <Panel label="Inspector" floating={editor.canvasStyle} className={panelOpen ? undefined : "closed"}>
+    <Panel
+      label="Inspector"
+      floating={editor.canvasStyle}
+      className={panelOpen ? undefined : "closed"}
+      data-bugdrop-mask
+    >
       <div className="inspector-tabs">
         <Segmented role="tab" label="Panel" value={tab} options={TABS} onChange={setTab} />
         <IconButton

@@ -88,6 +88,9 @@ p {
 a {
   color: var(--accent-fg);
 }
+.feedback-open [data-bugdrop-mask] {
+  visibility: hidden;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,
