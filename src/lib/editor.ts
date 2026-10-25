@@ -9,6 +9,8 @@ import {
 } from "react";
 import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalFont, PDF_TYPE } from "./browser";
 import {
+  type Align,
+  alignShift,
   compact,
   type El,
   familyOf,
@@ -412,7 +414,8 @@ export function useEditor() {
 
   const boxOf = (x: El): Box => {
     const n = document.querySelector<HTMLElement>(`[data-id="${CSS.escape(x.id)}"]`);
-    const l = n ? n.offsetLeft / scale : x.x,
+    // offsetLeft ignores the translate that centres and right-aligns text.
+    const l = n ? (n.offsetLeft - n.offsetWidth * alignShift(x.align)) / scale : x.x,
       t = n ? n.offsetTop / scale : x.y;
     const base = x.image ? NaN : x.y + x.ascent * x.size;
     return { l, t, r: l + (n?.offsetWidth ?? 0) / scale, b: t + (n ? n.offsetHeight / scale : x.size), base };
@@ -472,6 +475,51 @@ export function useEditor() {
   const duplicate = () => addCopies(selected, 10, 10);
   const selectAll = () => setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
   const canReset = selected.some((e) => e.orig && isDirty(e));
+  const bold = selText.length > 0 && selText.every((e) => isBoldName(e.font));
+  const italic = selText.length > 0 && selText.every((e) => isItalicName(e.font));
+  const align = selText.every((e) => (e.align ?? "left") === (selText[0]?.align ?? "left"))
+    ? (selText[0]?.align ?? "left")
+    : undefined;
+  const setAlign = (a: Align) =>
+    patch(textIds, (e) => {
+      const b = boxOf(e);
+      return { align: a === "left" ? undefined : a, x: b.l + (b.r - b.l) * alignShift(a) };
+    });
+  const toggleStyle = async (kind: "bold" | "italic") => {
+    const on = !(kind === "bold" ? bold : italic);
+    const chosen: Record<string, string> = {};
+    const unavailable = new Set<string>();
+    for (const e of selText) {
+      const want = [kind === "bold" ? on : isBoldName(e.font), kind === "italic" ? on : isItalicName(e.font)] as const;
+      const matches = (k: string) => isBoldName(k) === want[0] && isItalicName(k) === want[1];
+      const fam = familyOf(e.font);
+      let key = pickFace(fam, available, ...want);
+      const local = installed.filter((f) => familyOf(f.postscriptName) === fam);
+      if (!matches(key) && local.length) {
+        const face = local.find(
+          (f) =>
+            f.postscriptName ===
+            pickFace(
+              fam,
+              local.map((f) => f.postscriptName),
+              ...want,
+            ),
+        );
+        key = (face && matches(face.postscriptName) && (await addLocalFont(face))) || key;
+      }
+      if (matches(key)) chosen[e.id] = key;
+      else unavailable.add(fam);
+    }
+    if (Object.keys(chosen).length) patch(Object.keys(chosen), (e) => ({ font: chosen[e.id] }));
+    if (unavailable.size)
+      setReport({
+        ok: false,
+        lines: [
+          `No ${kind} style of ${[...unavailable].join(", ")} is loaded.`,
+          "Load that font file in the Fonts tab, then try again.",
+        ],
+      });
+  };
   const resetSel = () =>
     patch(sel, (e) =>
       e.orig ? { ...(({ rect: _r, ...o }) => o)(e.orig), deleted: false, wrap: undefined, lineHeight: undefined } : {},
@@ -496,6 +544,7 @@ export function useEditor() {
               {
                 ...e,
                 x: left,
+                align: undefined,
                 text: texts.map((t) => t.text.trim()).join(" "),
                 wrap: Math.ceil(right - left) + 2,
                 lineHeight: lines.length > 1 ? (lines[1] - lines[0]) / first.size : undefined,
@@ -529,6 +578,8 @@ export function useEditor() {
         if (!isTyping(e.target)) e.preventDefault(), key === "y" || e.shiftKey ? redo() : undo();
         return;
       }
+      if (mod && (key === "b" || key === "i") && selText.length)
+        return e.preventDefault(), void toggleStyle(key === "b" ? "bold" : "italic");
       if (isTyping(e.target)) return;
       if (e.key === "Escape") setSel([]), setAdding(false);
       if (mod && key === "a") return e.preventDefault(), selectAll();
@@ -722,7 +773,9 @@ export function useEditor() {
         if (!resizing.current) return;
         const page = (e.currentTarget as HTMLElement).closest(".page")!.getBoundingClientRect();
         const right = Math.min((e.clientX - page.left) / scale, inside(el.page)?.r ?? Infinity);
-        patch([el.id], { wrap: Math.max(el.size * 2, Math.round(right - el.x)) }, resizing.current);
+        const left = boxOf(el).l;
+        const wrap = Math.max(el.size * 2, Math.round(right - left));
+        patch([el.id], { wrap, x: left + wrap * alignShift(el.align) }, resizing.current);
       },
       resizeEnd: () => void (resizing.current = ""),
       unwrap: (id) => patch([id], { wrap: undefined }),
@@ -817,6 +870,11 @@ export function useEditor() {
     canUndo: past.current.length > 0,
     canRedo: future.current.length > 0,
     canReset,
+    bold,
+    italic,
+    align,
+    setAlign,
+    toggleStyle,
     patch,
     undo,
     redo,

@@ -1,6 +1,20 @@
 import type { Editor } from "../../lib/editor";
 import { LINE_HEIGHT } from "../../lib/model";
-import { Button, ColorInput, Field, Grid, Kbd, List, NumberInput, Row, Section, Select, TextArea } from "../ui";
+import {
+  Button,
+  ColorInput,
+  Field,
+  Grid,
+  Group,
+  IconButton,
+  Kbd,
+  List,
+  NumberInput,
+  Row,
+  Section,
+  Select,
+  TextArea,
+} from "../ui";
 import { FontNote } from "./FontNote";
 
 const HINTS = [
@@ -36,6 +50,43 @@ export function EditTab({ editor }: { editor: Editor }) {
           aria-label="Text"
           onChange={(e) => patch([one.id], { text: e.target.value }, `text:${one.id}`)}
         />
+      )}
+      {textIds.length > 0 && (
+        <Row>
+          <Group label="Style">
+            <IconButton
+              icon="bold"
+              label="Bold"
+              shortcut="Ctrl+B"
+              active={editor.bold}
+              onClick={() => editor.toggleStyle("bold")}
+            />
+            <IconButton
+              icon="italic"
+              label="Italic"
+              shortcut="Ctrl+I"
+              active={editor.italic}
+              onClick={() => editor.toggleStyle("italic")}
+            />
+          </Group>
+          <Group label="Alignment">
+            {(
+              [
+                ["left", "alignLeft", "Align left"],
+                ["center", "alignCenter", "Centre"],
+                ["right", "alignRight", "Align right"],
+              ] as const
+            ).map(([a, icon, label]) => (
+              <IconButton
+                key={a}
+                icon={icon}
+                label={label}
+                active={editor.align === a}
+                onClick={() => editor.setAlign(a)}
+              />
+            ))}
+          </Group>
+        </Row>
       )}
       <Grid>
         {textIds.length > 0 && (

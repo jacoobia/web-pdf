@@ -17,6 +17,7 @@ export const drawnStyle = (el: El, scale: number) => ({
   fontSize: el.size * scale,
   color: el.color,
   transform: el.align === "center" ? "translateX(-50%)" : el.align === "right" ? "translateX(-100%)" : undefined,
+  textAlign: el.align,
   ...cssFont(el.font),
 });
 

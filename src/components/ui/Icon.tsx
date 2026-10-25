@@ -92,6 +92,35 @@ const ICONS = {
     </>
   ),
   chevron: p("m6 9 6 6 6-6"),
+  bold: p("M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8"),
+  italic: (
+    <>
+      {p("M19 4h-9")}
+      {p("M14 20H5")}
+      {p("M15 4 9 20")}
+    </>
+  ),
+  alignLeft: (
+    <>
+      {p("M21 6H3")}
+      {p("M15 12H3")}
+      {p("M17 18H3")}
+    </>
+  ),
+  alignCenter: (
+    <>
+      {p("M21 6H3")}
+      {p("M17 12H7")}
+      {p("M19 18H5")}
+    </>
+  ),
+  alignRight: (
+    <>
+      {p("M21 6H3")}
+      {p("M21 12H9")}
+      {p("M21 18H7")}
+    </>
+  ),
   feedback: p("M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"),
 } satisfies Record<string, ReactNode>;
 

@@ -75,6 +75,9 @@ export function fontHelp(name: string): {
   };
 }
 
+export type Align = NonNullable<El["align"]>;
+export const alignShift = (a?: Align) => (a === "center" ? 0.5 : a === "right" ? 1 : 0);
+
 export const isBoldName = (n: string) => /bold|black|heavy|semibold/i.test(n);
 export const isItalicName = (n: string) => /italic|oblique/i.test(n);
 

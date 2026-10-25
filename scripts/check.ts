@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
 import {
+  alignShift,
   type El,
   exportPdf,
   extract,
@@ -148,6 +149,29 @@ assert.ok(Math.abs(right.x + right.w - (595 - 36)) < 1, `right edge ${right.x + 
 const centre = withHf.find((e) => e.text === "Page 1 of 1")!.orig!.rect;
 assert.ok(Math.abs(centre.x + centre.w / 2 - 595 / 2) < 1, `centre ${centre.x + centre.w / 2}`);
 assert.equal(headerFooterEls({ ...hfCfg, skipFirst: true }, pages).length, 0, "only page is skipped");
+
+// alignment: wrapped lines centre on x, matching the preview's text-align inside a translated box
+assert.deepEqual([alignShift(), alignShift("center"), alignShift("right")], [0, 0.5, 1]);
+const centred: El = {
+  id: "c",
+  page: 0,
+  text: "Centred text that wraps onto a second line",
+  x: 297.5,
+  y: 400,
+  ascent: 0.8,
+  size: 12,
+  color: "#000000",
+  font: "Helvetica",
+  srcFont: "",
+  bold: false,
+  italic: false,
+  align: "center",
+  wrap: 150,
+};
+const centredOut = extract((await exportPdf(src, [centred], new Map())).pdf).els.filter((e) => e.orig!.rect.y > 380);
+assert.equal(centredOut.length, 2, "wrapped onto two lines");
+for (const e of centredOut)
+  assert.ok(Math.abs(e.orig!.rect.x + e.orig!.rect.w / 2 - 297.5) < 1, `line centred: ${e.text}`);
 
 const imgs = (els: El[]) => els.filter((e) => e.image);
 assert.equal(imgs(extract(pdf).els).length, 1, "untouched image survives text edits");
