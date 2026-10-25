@@ -4,7 +4,7 @@ import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/mo
 import { ZoomTools } from "./EditorTools";
 import { HeaderFooterItem, PageItem } from "./PageItem";
 import { StartScreen } from "./StartScreen";
-import { Callout } from "./ui";
+import { AddBar, Callout } from "./ui";
 import "./PageCanvas.css";
 
 type Cached = { deps: unknown[]; node: ReactElement };
@@ -60,12 +60,13 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     if (e) selByPage.set(e.page, `${(selByPage.get(e.page) ?? "") + id},`);
   }
   const pageViews = useRef(new Map<number, Cached>());
-  const pageView = ({ src: p, rotate }: Slot) => {
+  const pageView = ({ src: p, rotate }: Slot, at: number) => {
     const pg = pages[p];
     const isNear = previews.near.has(p);
     const deps = [
       pg,
       rotate,
+      at,
       scale,
       adding,
       isNear,
@@ -121,6 +122,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
               .map(itemView)}
           {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
         </div>
+        <AddBar className="page-add" label={`Add a blank page after page ${at + 1}`} onAdd={() => on.add(at)} />
       </div>
     );
     pageViews.current.set(p, { deps, node });

@@ -61,6 +61,7 @@ export type PageHandlers = {
   move(e: PointerEvent<HTMLDivElement>): void;
   up(): void;
   menu(e: RMouseEvent<HTMLDivElement>, page: number): void;
+  add(after: number): void;
 };
 
 const NARROW = "(max-width: 760px)";
@@ -940,7 +941,7 @@ export function useEditor() {
       resizeEnd: () => void (resizing.current = ""),
       unwrap: (id) => patch([id], { wrap: undefined }),
     },
-    page: { down: onPageDown, move: onPageMove, up: onPageUp, menu: onPageMenu },
+    page: { down: onPageDown, move: onPageMove, up: onPageUp, menu: onPageMenu, add: (at) => insertBlank(at) },
   };
   const elHandlers = useMemo<ElHandlers>(
     () => ({
@@ -962,6 +963,7 @@ export function useEditor() {
       move: (e) => live.current.page.move(e),
       up: () => live.current.page.up(),
       menu: (e, p) => live.current.page.menu(e, p),
+      add: (at) => live.current.page.add(at),
     }),
     [],
   );
