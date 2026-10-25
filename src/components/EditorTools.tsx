@@ -1,7 +1,7 @@
 import { errorText } from "../lib/browser";
 import type { Editor } from "../lib/editor";
 import { openFeedback } from "../lib/feedback";
-import { Button, IconButton, IconLink } from "./ui";
+import { Button, IconButton, IconLink, Tooltip } from "./ui";
 
 export const REPO_URL = "https://github.com/jacoobia/web-pdf";
 
@@ -106,7 +106,9 @@ export const PanelToggle = ({ editor, className }: { editor: Editor; className?:
 
 export const SaveButton = ({ editor }: { editor: Editor }) =>
   editor.file && (
-    <Button variant="primary" onClick={editor.save} title="Save a copy with your edits">
-      Save
-    </Button>
+    <Tooltip text="Save a copy with your edits">
+      <Button variant="primary" onClick={editor.save}>
+        Save
+      </Button>
+    </Tooltip>
   );

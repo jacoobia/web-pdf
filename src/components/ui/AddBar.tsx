@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { cx } from "../../lib/cx";
 import { Icon } from "./Icon";
+import { Tooltip } from "./Tooltip";
 import "./AddBar.css";
 
 export const AddBar = ({
@@ -14,15 +15,16 @@ export const AddBar = ({
   className?: string;
   style?: CSSProperties;
 }) => (
-  <button
-    type="button"
-    className={cx("add-bar", className)}
-    style={style}
-    aria-label={label}
-    title={label}
-    onPointerDown={(e) => e.stopPropagation()}
-    onClick={onAdd}
-  >
-    <Icon name="plus" size={16} />
-  </button>
+  <Tooltip text={label}>
+    <button
+      type="button"
+      className={cx("add-bar", className)}
+      style={style}
+      aria-label={label}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={onAdd}
+    >
+      <Icon name="plus" size={16} />
+    </button>
+  </Tooltip>
 );

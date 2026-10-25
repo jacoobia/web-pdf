@@ -1,6 +1,6 @@
 import type { Editor } from "../lib/editor";
 import { openedAt, type Recent } from "../lib/recent";
-import { Button, Icon } from "./ui";
+import { Button, Icon, Tooltip } from "./ui";
 import "./StartScreen.css";
 
 export const StartScreen = ({ editor }: { editor: Editor }) => (
@@ -45,15 +45,16 @@ function RecentFiles({
                 </span>
               </span>
             </button>
-            <button
-              type="button"
-              className="recent-x"
-              aria-label={`Remove ${r.name} from recent files`}
-              title="Remove from list"
-              onClick={() => onForget(r.name)}
-            >
-              <Icon name="close" size={14} />
-            </button>
+            <Tooltip text="Remove from list">
+              <button
+                type="button"
+                className="recent-x"
+                aria-label={`Remove ${r.name} from recent files`}
+                onClick={() => onForget(r.name)}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            </Tooltip>
           </li>
         ))}
       </ul>

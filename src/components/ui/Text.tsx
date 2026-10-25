@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cx } from "../../lib/cx";
+import { Tooltip } from "./Tooltip";
 import "./Text.css";
 
 export const Muted = ({ inline, children }: { inline?: boolean; children: ReactNode }) =>
@@ -7,17 +8,23 @@ export const Muted = ({ inline, children }: { inline?: boolean; children: ReactN
 
 export const Kbd = ({ children }: { children: ReactNode }) => <kbd className="kbd">{children}</kbd>;
 
-export const Dot = ({ title }: { title?: string }) => <span className="dot" title={title} />;
+export const Dot = ({ title }: { title?: string }) => (
+  <Tooltip text={title}>
+    <span className="dot" />
+  </Tooltip>
+);
 
 export const Tag = ({ ok, children }: { ok?: boolean; children: ReactNode }) => (
   <span className={cx("tag", ok && "ok")}>{children}</span>
 );
 
 export const Badge = ({ title, children }: { title?: string; children: ReactNode }) => (
-  <span className="badge" title={title}>
-    <Dot />
-    {children}
-  </span>
+  <Tooltip text={title}>
+    <span className="badge">
+      <Dot />
+      {children}
+    </span>
+  </Tooltip>
 );
 
 export const Pre = ({ children }: { children: ReactNode }) => <pre className="pre">{children}</pre>;

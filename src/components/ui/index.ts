@@ -16,3 +16,4 @@ export { Switch } from "./Switch";
 export { Badge, Callout, Dot, Kbd, List, Muted, Pre, Spinner, Tag } from "./Text";
 export { TextLink } from "./TextLink";
 export { Toast, type ToastAction } from "./Toast";
+export { Tooltip, TooltipHost } from "./Tooltip";

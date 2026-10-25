@@ -577,6 +577,24 @@ await test("Ctrl+wheel zooms around the cursor; a plain wheel scrolls", async ({
   assert.ok((await page.locator(".pages").evaluate((m) => m.scrollTop)) > top, "plain wheel scrolls");
 });
 
+await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
+  await open();
+  const find = page.getByRole("button", { name: "Find and replace" });
+  await find.hover();
+  const tip = page.getByRole("tooltip");
+  await tip.waitFor();
+  assert.equal(await tip.innerText(), "Find and replace\nCtrl+F");
+  assert.equal(await find.getAttribute("aria-describedby"), await tip.getAttribute("id"));
+  await page.keyboard.press("Escape");
+  await tip.waitFor({ state: "detached" });
+  assert.equal(await find.getAttribute("aria-describedby"), null);
+  await page.mouse.move(700, 600);
+  await page.getByRole("button", { name: "Add text" }).focus();
+  await page.keyboard.press("Tab");
+  await tip.waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), await tip.innerText());
+});
+
 await browser.close();
 await server.close();
 console.log(

@@ -3,6 +3,7 @@ import { cx } from "../lib/cx";
 import { drawnStyle, shownText } from "../lib/drawn";
 import type { ElHandlers } from "../lib/editor";
 import { type El, isDirty } from "../lib/model";
+import { Tooltip } from "./ui";
 
 const boxOf = (el: El, scale: number) => {
   const r = el.orig?.rect;
@@ -56,23 +57,25 @@ export const PageItem = memo(function PageItem({
           ? shownText(el, fonts) || "\u00a0"
           : null}
       {single && !el.image && (
-        <span
-          className="resize"
-          title="Drag to set the width so text wraps. Double-click for automatic width."
-          onPointerDown={on.resizeStart}
-          onPointerMove={(e) => on.resizeMove(e, el)}
-          onPointerUp={on.resizeEnd}
-          onDoubleClick={(e) => (e.stopPropagation(), on.unwrap(el.id))}
-        />
+        <Tooltip text="Drag to set the width so text wraps. Double-click for automatic width.">
+          <span
+            className="resize"
+            onPointerDown={on.resizeStart}
+            onPointerMove={(e) => on.resizeMove(e, el)}
+            onPointerUp={on.resizeEnd}
+            onDoubleClick={(e) => (e.stopPropagation(), on.unwrap(el.id))}
+          />
+        </Tooltip>
       )}
       {single && el.image && (
-        <span
-          className="resize corner"
-          title="Drag to resize"
-          onPointerDown={on.resizeStart}
-          onPointerMove={(e) => on.resizeMove(e, el)}
-          onPointerUp={on.resizeEnd}
-        />
+        <Tooltip text="Drag to resize">
+          <span
+            className="resize corner"
+            onPointerDown={on.resizeStart}
+            onPointerMove={(e) => on.resizeMove(e, el)}
+            onPointerUp={on.resizeEnd}
+          />
+        </Tooltip>
       )}
     </div>
   );

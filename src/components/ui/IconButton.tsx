@@ -1,11 +1,10 @@
 import type { ComponentProps } from "react";
 import { cx } from "../../lib/cx";
 import { Icon, type IconName } from "./Icon";
+import { Tooltip } from "./Tooltip";
 import "./IconButton.css";
 
 type Props = { icon: IconName; label: string; shortcut?: string; active?: boolean };
-
-const title = (label: string, shortcut?: string) => (shortcut ? `${label} (${shortcut})` : label);
 
 export function IconButton({
   icon,
@@ -16,16 +15,17 @@ export function IconButton({
   ...props
 }: Props & Omit<ComponentProps<"button">, "children">) {
   return (
-    <button
-      type="button"
-      className={cx("tool", active && "on", className)}
-      aria-label={label}
-      aria-pressed={active}
-      title={title(label, shortcut)}
-      {...props}
-    >
-      <Icon name={icon} />
-    </button>
+    <Tooltip text={label} shortcut={shortcut}>
+      <button
+        type="button"
+        className={cx("tool", active && "on", className)}
+        aria-label={label}
+        aria-pressed={active}
+        {...props}
+      >
+        <Icon name={icon} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -37,16 +37,10 @@ export function IconLink({
   ...props
 }: Props & { href: string } & Omit<ComponentProps<"a">, "children" | "href">) {
   return (
-    <a
-      href={href}
-      className={cx("tool", className)}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={label}
-      title={label}
-      {...props}
-    >
-      <Icon name={icon} />
-    </a>
+    <Tooltip text={label}>
+      <a href={href} className={cx("tool", className)} target="_blank" rel="noreferrer" aria-label={label} {...props}>
+        <Icon name={icon} />
+      </a>
+    </Tooltip>
   );
 }

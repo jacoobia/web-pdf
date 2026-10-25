@@ -1,0 +1,35 @@
+.tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 280px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--float);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(var(--tip-from, 0));
+  transition:
+    opacity 100ms,
+    transform 100ms;
+}
+.tooltip.below {
+  --tip-from: -3px;
+}
+.tooltip.above {
+  --tip-from: 3px;
+}
+.tooltip.shown {
+  opacity: 1;
+  transform: none;
+}
+.tooltip .kbd {
+  flex: none;
+}
