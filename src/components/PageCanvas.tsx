@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useMemo, useRef } from "react";
+import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Editor } from "../lib/editor";
 import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
@@ -28,6 +28,66 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     for (const child of m.children) ro.observe(child);
     return () => ro.disconnect();
   }, [file, order, scale, editor.canvasStyle]);
+
+  // Zoom around a point: remember where it was, then scroll so it stays put once the pages have resized.
+  const live = useRef({ scale, zoomTo: editor.zoomTo, cancel: editor.cancelGesture });
+  live.current = { scale, zoomTo: editor.zoomTo, cancel: editor.cancelGesture };
+  const anchor = useRef<{ x: number; y: number; from: number } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per zoom step; the refs it reads are set just before
+  useLayoutEffect(() => {
+    const m = pagesRef.current,
+      a = anchor.current;
+    if (!m || !a) return;
+    const k = scale / a.from;
+    m.scrollLeft = (m.scrollLeft + a.x) * k - a.x;
+    m.scrollTop = (m.scrollTop + a.y) * k - a.y;
+    anchor.current = null;
+  }, [scale]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listeners read the latest values through refs
+  useEffect(() => {
+    const m = pagesRef.current;
+    if (!m) return;
+    const zoomAround = (to: number, clientX: number, clientY: number) => {
+      const r = m.getBoundingClientRect();
+      anchor.current ??= { x: clientX - r.left, y: clientY - r.top, from: live.current.scale };
+      live.current.zoomTo(to);
+    };
+    let pinch: { dist: number; scale: number } | null = null;
+    const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      live.current.cancel();
+      pinch = { dist: spread(e.touches), scale: live.current.scale };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const [a, b] = [e.touches[0], e.touches[1]];
+      zoomAround(
+        (pinch.scale * spread(e.touches)) / pinch.dist,
+        (a.clientX + b.clientX) / 2,
+        (a.clientY + b.clientY) / 2,
+      );
+    };
+    const onEnd = (e: TouchEvent) => void (e.touches.length < 2 && (pinch = null));
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      zoomAround(live.current.scale * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+    };
+    m.addEventListener("touchstart", onStart, { passive: true });
+    m.addEventListener("touchmove", onMove, { passive: false });
+    m.addEventListener("touchend", onEnd);
+    m.addEventListener("touchcancel", onEnd);
+    m.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      m.removeEventListener("touchstart", onStart);
+      m.removeEventListener("touchmove", onMove);
+      m.removeEventListener("touchend", onEnd);
+      m.removeEventListener("touchcancel", onEnd);
+      m.removeEventListener("wheel", onWheel);
+    };
+  }, [file]);
 
   const selSet = new Set(sel);
   const views = useRef(new WeakMap<El, { key: string; fonts: Map<string, Uint8Array>; node: ReactElement }>());

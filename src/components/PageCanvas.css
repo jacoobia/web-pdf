@@ -2,6 +2,7 @@
   position: absolute;
   inset: 0;
   overflow: auto;
+  touch-action: pan-x pan-y;
   padding: 32px 24px 96px;
   display: flex;
   flex-direction: column;

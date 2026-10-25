@@ -923,6 +923,13 @@ export function useEditor() {
     setScale(clampScale(Math.floor(((m.clientWidth - 64) / widest) * 20) / 20));
   };
   const zoomBy = (d: number) => setScale((s) => clampScale(Math.round((s + d) * 100) / 100));
+  const zoomTo = (s: number) => setScale(clampScale(Math.round(s * 100) / 100));
+  const cancelGesture = () => {
+    drag.current = null;
+    marquee.current = null;
+    setBand(null);
+    setGuides(null);
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: fit once per opened document, on small screens
   useEffect(() => {
     if (pages.length && matchMedia(NARROW).matches) fitWidth();
@@ -962,6 +969,7 @@ export function useEditor() {
   };
 
   const onElDown = (e: PointerEvent, el: El) => {
+    if (!e.isPrimary) return e.stopPropagation();
     if (adding || e.button !== 0) return e.button === 2 && e.stopPropagation();
     e.stopPropagation();
     const mod = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -1048,7 +1056,7 @@ export function useEditor() {
     return { page, x: x / scale, y: y / scale };
   };
   const onPageDown = (e: PointerEvent<HTMLDivElement>, page: number) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !e.isPrimary) return;
     const at = pointOn(e, page);
     if (adding) return e.preventDefault(), addTextAt(at);
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
@@ -1248,6 +1256,8 @@ export function useEditor() {
     addTextAt,
     fitWidth,
     zoomBy,
+    zoomTo,
+    cancelGesture,
     goToPage,
     findOpen,
     setFindOpen,
