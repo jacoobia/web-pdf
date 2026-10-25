@@ -1,12 +1,59 @@
 import type { Editor } from "../../lib/editor";
-import { Checkbox, ColorInput, Field, Grid, Muted, NumberInput, Section, Select, TextInput, TextLink } from "../ui";
+import {
+  Button,
+  Checkbox,
+  ColorInput,
+  Field,
+  Grid,
+  Group,
+  IconButton,
+  Muted,
+  NumberInput,
+  Row,
+  Section,
+  Select,
+  TextInput,
+  TextLink,
+} from "../ui";
 
 const SLOTS = ["Left", "Centre", "Right"];
 
 export function PageTab({ editor }: { editor: Editor }) {
-  const { hf, setHf, margin } = editor;
+  const { hf, setHf, margin, order } = editor;
+  const at = Math.max(0, editor.positionOf(editor.currentPage));
+  const move = (to: number) => {
+    const { src } = order[at];
+    editor.movePage(at, to);
+    requestAnimationFrame(() => editor.goToPage(src));
+  };
   return (
     <>
+      <Section title="Pages">
+        <Muted>
+          Page {at + 1} of {order.length}. Changes apply to the page at the top of the view.
+        </Muted>
+        <Row>
+          <Group label="Rotate">
+            <IconButton icon="rotateLeft" label="Rotate left" onClick={() => editor.rotatePage(at, -90)} />
+            <IconButton icon="rotateRight" label="Rotate right" onClick={() => editor.rotatePage(at, 90)} />
+          </Group>
+          <Group label="Move">
+            <IconButton icon="arrowUp" label="Move page up" disabled={at === 0} onClick={() => move(at - 1)} />
+            <IconButton
+              icon="arrowDown"
+              label="Move page down"
+              disabled={at === order.length - 1}
+              onClick={() => move(at + 1)}
+            />
+          </Group>
+        </Row>
+        <Row>
+          <Button onClick={() => editor.insertBlank(at)}>Add blank page after</Button>
+          <Button variant="ghost" tone="danger" disabled={order.length < 2} onClick={() => editor.deletePage(at)}>
+            Delete page
+          </Button>
+        </Row>
+      </Section>
       <Section title="Header & footer">
         {(["header", "footer"] as const).map((row) => (
           <Grid key={row} cols={3}>

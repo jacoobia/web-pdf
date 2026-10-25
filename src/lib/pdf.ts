@@ -18,6 +18,7 @@ import {
   type Rect,
   type Removed,
   removedOn,
+  type Slot,
   STANDARD_FONTS,
   textBounds,
   wrapLines,
@@ -287,12 +288,36 @@ export function renderPage(bytes: Uint8Array, page: number, scale: number, remov
   }
 }
 
+export type Layout = { pages: PageInfo[]; order: Slot[] };
+
+const isIdentity = ({ pages, order }: Layout) =>
+  order.length === pages.length && order.every((s, i) => s.src === i && s.rotate === 0);
+
+function arrange(pdf: Uint8Array, { order }: Layout) {
+  const doc = open(pdf);
+  for (const { src, rotate } of order) {
+    if (!rotate) continue;
+    const page = doc.findPage(src);
+    const now = page.getInheritable("Rotate");
+    page.put("Rotate", ((now.isNumber() ? now.asNumber() : 0) + rotate) % 360);
+  }
+  doc.rearrangePages(order.map((s) => s.src));
+  const buf = doc.saveToBuffer("garbage=compact,compress");
+  const out = buf.asUint8Array().slice();
+  buf.destroy();
+  doc.destroy();
+  return out;
+}
+
 export async function exportPdf(
   bytes: Uint8Array,
   els: El[],
   fonts: Map<string, Uint8Array>,
+  layout?: Layout,
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
+  for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
+    doc.insertPage(doc.countPages(), doc.addPage([0, 0, pg.w, pg.h], 0, doc.newDictionary(), ""));
   const pngs = new Map<string, Uint8Array>();
   for (const el of els)
     if (el.image && !el.deleted && isDirty(el)) {
@@ -369,8 +394,12 @@ export async function exportPdf(
       });
     });
   }
-  const pdf = await out.save();
-  return { pdf, problems: verify(pdf, els) };
+  const drawn = await out.save();
+  if (!layout || isIdentity(layout)) return { pdf: drawn, problems: verify(drawn, els) };
+  const pdf = arrange(drawn, layout);
+  const at = new Map(layout.order.map((s, i) => [s.src, i]));
+  const shown = els.filter((e) => at.has(e.page)).map((e) => ({ ...e, page: at.get(e.page)! }));
+  return { pdf, problems: verify(pdf, shown) };
 }
 
 const norm = (s: string) => s.replace(HYPHENS, "-").replace(/\s+/g, " ").trim();

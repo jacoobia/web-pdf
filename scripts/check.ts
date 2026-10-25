@@ -8,16 +8,19 @@ import {
   familyOf,
   fontKey,
   headerFooterEls,
+  identityOrder,
   measure,
   normaliseLink,
   Previewer,
   pickFace,
   removedOn,
   renderPage,
+  unrotate,
+  unrotateDelta,
   wrapLines,
 } from "../src/lib/pdf";
 import { confine, snap } from "../src/lib/snap";
-import { CALIBRI, makeSample } from "./sample";
+import { CALIBRI, makeLargeSample, makeSample } from "./sample";
 
 const src = await makeSample();
 const { pages, els } = extract(src);
@@ -182,7 +185,7 @@ assert.equal(unlinkedPdf.loadPage(0).getLinks().length, 0, "removed link is gone
 
 // alignment: wrapped lines centre on x, matching the preview's text-align inside a translated box
 assert.deepEqual([alignShift(), alignShift("center"), alignShift("right")], [0, 0.5, 1]);
-const centred: El = {
+const centred = (): El => ({
   id: "c",
   page: 0,
   text: "Centred text that wraps onto a second line",
@@ -197,11 +200,75 @@ const centred: El = {
   italic: false,
   align: "center",
   wrap: 150,
-};
-const centredOut = extract((await exportPdf(src, [centred], new Map())).pdf).els.filter((e) => e.orig!.rect.y > 380);
+});
+const centredOut = extract((await exportPdf(src, [centred()], new Map())).pdf).els.filter((e) => e.orig!.rect.y > 380);
 assert.equal(centredOut.length, 2, "wrapped onto two lines");
 for (const e of centredOut)
   assert.ok(Math.abs(e.orig!.rect.x + e.orig!.rect.w / 2 - 297.5) < 1, `line centred: ${e.text}`);
+
+// pages: a point shown on a rotated page maps back to the same spot on the unrotated page
+for (const rot of [0, 90, 180, 270]) {
+  const [w, h] = [600, 800];
+  const css = {
+    0: (x: number, y: number) => [x, y],
+    90: (x: number, y: number) => [h - y, x],
+    180: (x: number, y: number) => [w - x, h - y],
+    270: (x: number, y: number) => [y, w - x],
+  }[rot]!;
+  const [u, v] = css(120, 340);
+  assert.deepEqual(unrotate(rot, u, v, w, h), [120, 340], `unrotate ${rot}`);
+  const [du, dv] = css(130, 345).map((n, i) => n - [u, v][i]);
+  assert.deepEqual(unrotateDelta(rot, du, dv), [10, 5], `unrotateDelta ${rot}`);
+}
+const big = await makeLargeSample();
+const four = extract(big);
+const pageText = (pdf: Uint8Array, p: number) =>
+  mupdf.Document.openDocument(pdf, "application/pdf").loadPage(p).toStructuredText("preserve-whitespace").asText();
+const blank = { w: 300, h: 400, rotated: false, blank: true };
+const layout = {
+  pages: [...four.pages, blank],
+  order: [
+    { src: 3, rotate: 0 },
+    { src: 0, rotate: 90 },
+    { src: 4, rotate: 0 },
+  ],
+};
+const onBlank: El = {
+  ...centred(),
+  id: "b",
+  page: 4,
+  text: "On the blank page",
+  x: 40,
+  y: 60,
+  align: undefined,
+  wrap: undefined,
+};
+const arranged = await exportPdf(big, [...four.els, onBlank], new Map(), layout);
+assert.deepEqual(arranged.problems, []);
+const out3 = mupdf.Document.openDocument(arranged.pdf, "application/pdf") as mupdf.PDFDocument;
+assert.equal(out3.countPages(), 3, "two pages deleted, one blank added");
+assert.equal(pageText(arranged.pdf, 0), pageText(big, 3), "last page moved to the front");
+assert.equal(out3.findPage(1).get("Rotate").asNumber(), 90, "second page rotated");
+assert.deepEqual(out3.loadPage(2).getBounds().map(Math.round), [0, 0, 300, 400], "blank page has its own size");
+assert.match(pageText(arranged.pdf, 2), /On the blank page/);
+const numbered = headerFooterEls(
+  { ...hfCfg, header: ["", "", ""], footer: ["", "{page}/{pages}", ""] },
+  layout.pages,
+  layout.order,
+);
+assert.deepEqual(
+  numbered.map((e) => [e.page, e.text]),
+  [
+    [3, "1/3"],
+    [0, "2/3"],
+    [4, "3/3"],
+  ],
+  "numbers follow the new order",
+);
+assert.deepEqual(
+  identityOrder(four.pages).map((s) => s.src),
+  [0, 1, 2, 3],
+);
 
 const imgs = (els: El[]) => els.filter((e) => e.image);
 assert.equal(imgs(extract(pdf).els).length, 1, "untouched image survives text edits");

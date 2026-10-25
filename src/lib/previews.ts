@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type El, type PageInfo, removedOn } from "./model";
+import { type El, type PageInfo, removedOn, type Slot } from "./model";
 import type { Replies, WorkerIn } from "./render.worker";
 
 type Rendered =
@@ -45,12 +45,14 @@ function useVisible(root: string, rootMargin: string, initial: () => Set<number>
 export function usePreviews({
   open,
   pages,
+  order,
   byPage,
   scale,
   thumbs,
 }: {
   open: boolean;
   pages: PageInfo[];
+  order: Slot[];
   byPage: Map<number, El[]>;
   scale: number;
   thumbs: boolean;
@@ -104,26 +106,30 @@ export function usePreviews({
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
-      pages.forEach((_, p) => {
+      for (const { src: p } of order) {
+        if (pages[p].blank) continue;
         if (!near.has(p)) {
-          if (wanted.current.delete(p)) canvases.current.get(p)!.width = 0;
-          return;
+          if (wanted.current.delete(p)) {
+            const c = canvases.current.get(p);
+            if (c) c.width = 0;
+          }
+          continue;
         }
         const removed = removedOn(byPage.get(p) ?? [], p);
         const key = `${scale}|${JSON.stringify(removed)}`;
-        if (wanted.current.get(p) === key) return;
+        if (wanted.current.get(p) === key) continue;
         wanted.current.set(p, key);
         post({ type: "render", page: p, key, scale: scale * devicePixelRatio, removed });
-      });
+      }
     }, 30);
     return () => clearTimeout(t);
-  }, [open, pages, byPage, scale, near]);
+  }, [open, pages, order, byPage, scale, near]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: post is stable
   useEffect(() => {
     if (!open || !thumbs) return;
     for (const p of thumbNear)
-      if (!thumbsAsked.current.has(p)) {
+      if (!thumbsAsked.current.has(p) && !pages[p]?.blank) {
         thumbsAsked.current.add(p);
         post({
           type: "render",
@@ -134,7 +140,7 @@ export function usePreviews({
           original: true,
         });
       }
-  }, [open, thumbs, thumbNear]);
+  }, [open, thumbs, thumbNear, pages]);
 
   const imageUrl = (img: NonNullable<El["image"]>) => {
     const key = `${img.page}:${img.index}`;

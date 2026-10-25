@@ -17,13 +17,18 @@ import {
   fontKey,
   type HeaderFooter,
   headerFooterEls,
+  identityOrder,
   isBoldName,
   isDirty,
   isItalicName,
   LINE_HEIGHT,
   type PageInfo,
   pickFace,
+  type Slot,
   STANDARD_FONTS,
+  turned,
+  unrotate,
+  unrotateDelta,
 } from "./model";
 import { usePref, usePrefs } from "./prefs";
 import { usePreviews } from "./previews";
@@ -85,6 +90,7 @@ export function useEditor() {
   const { recent, remember, forget, load } = useRecent();
   const [file, setFile] = useState<{ name: string; handle?: FileSystemFileHandle } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
+  const [order, setOrder] = useState<Slot[]>([]);
   const [els, setEls] = useState<El[]>([]);
   const [sel, setSel] = useState<string[]>([]);
   const [fonts, setFonts] = useState(new Map<string, Uint8Array>());
@@ -116,13 +122,15 @@ export function useEditor() {
   const textBox = useRef<HTMLTextAreaElement>(null);
   const elsRef = useRef<El[]>([]);
   const pageArrays = useRef(new Map<number, El[]>());
-  const past = useRef<El[][]>([]);
-  const future = useRef<El[][]>([]);
+  type Snap = { els: El[]; order: Slot[] };
+  const orderRef = useRef<Slot[]>([]);
+  const past = useRef<Snap[]>([]);
+  const future = useRef<Snap[]>([]);
   const lastTouch = useRef("");
   const resizing = useRef("");
   const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
   const pasteTimer = useRef(0);
-  const saved = useRef<{ els: El[]; hf: HeaderFooter | null }>({ els: [], hf: null });
+  const saved = useRef<{ els: El[]; hf: HeaderFooter | null; order: Slot[] }>({ els: [], hf: null, order: [] });
   const drag = useRef<{
     x: number;
     y: number;
@@ -151,13 +159,13 @@ export function useEditor() {
     return m;
   }, [els]);
   const elById = useMemo(() => new Map(els.map((e) => [e.id, e])), [els]);
-  const hfEls = useMemo(() => headerFooterEls(hf, pages), [hf, pages]);
+  const hfEls = useMemo(() => headerFooterEls(hf, pages, order), [hf, pages, order]);
   const hfByPage = useMemo(() => groupByPage(hfEls), [hfEls]);
   const editedPages = useMemo(() => new Set(els.filter(isDirty).map((e) => e.page)), [els]);
   const sourceFonts = useMemo(() => [...new Set(els.map((e) => e.srcFont).filter(Boolean))], [els]);
 
   const canvasStyle = prefs.uiStyle === "canvas";
-  const previews = usePreviews({ open: !!file, pages, byPage, scale, thumbs: canvasStyle });
+  const previews = usePreviews({ open: !!file, pages, order, byPage, scale, thumbs: canvasStyle });
 
   const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
   const one = selected.length === 1 ? selected[0] : null;
@@ -174,15 +182,24 @@ export function useEditor() {
   const inside = (page: number): Area | null =>
     margin === null ? null : { l: margin, t: margin, r: pages[page].w - margin, b: pages[page].h - margin };
 
-  const commit = (next: El[], touch = "") => {
+  const current = (): Snap => ({ els: elsRef.current, order: orderRef.current });
+  const record = (touch: string) => {
     future.current = [];
     if (!touch || touch !== lastTouch.current) {
-      past.current.push(elsRef.current);
+      past.current.push(current());
       if (past.current.length > 300) past.current.shift();
     }
     lastTouch.current = touch;
+  };
+  const commit = (next: El[], touch = "") => {
+    record(touch);
     elsRef.current = next;
     setEls(next);
+  };
+  const commitOrder = (next: Slot[]) => {
+    record("");
+    orderRef.current = next;
+    setOrder(next);
   };
   const patch = (ids: string[], p: Partial<El> | ((e: El) => Partial<El>), touch = "") =>
     commit(
@@ -192,10 +209,12 @@ export function useEditor() {
   const step = (from: typeof past, to: typeof past) => {
     const next = from.current.pop();
     if (!next) return;
-    to.current.push(elsRef.current);
+    to.current.push(current());
     lastTouch.current = "";
-    elsRef.current = next;
-    setEls(next);
+    elsRef.current = next.els;
+    orderRef.current = next.order;
+    setEls(next.els);
+    setOrder(next.order);
   };
   const undo = () => step(past, future);
   const redo = () => step(future, past);
@@ -220,7 +239,8 @@ export function useEditor() {
     setSel([]);
   };
 
-  const unsaved = () => elsRef.current !== saved.current.els || hf !== saved.current.hf;
+  const unsaved = () =>
+    elsRef.current !== saved.current.els || hf !== saved.current.hf || orderRef.current !== saved.current.order;
   const clearPreviews = () => {
     previews.clear();
     clip.current = null;
@@ -232,8 +252,10 @@ export function useEditor() {
     past.current = [];
     future.current = [];
     elsRef.current = [];
+    orderRef.current = [];
     setFile(null);
     setPages([]);
+    setOrder([]);
     setEls([]);
     setSel([]);
     setAdding(false);
@@ -302,10 +324,13 @@ export function useEditor() {
       past.current = [];
       future.current = [];
       elsRef.current = list;
-      saved.current = { els: list, hf };
+      const first = identityOrder(pages);
+      orderRef.current = first;
+      saved.current = { els: list, hf, order: first };
       setFile({ name: f.name, handle });
       remember(f.name, handle, f);
       setPages(pages);
+      setOrder(first);
       setEls(list);
       setSel([]);
       setReport(null);
@@ -369,11 +394,12 @@ export function useEditor() {
     const name = target?.name ?? suggestedName;
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
-      const snapshot = { els: elsRef.current, hf };
+      const snapshot = { els: elsRef.current, hf, order: orderRef.current };
       const { pdf, problems } = await previews.request<"export">({
         type: "export",
         els: [...snapshot.els, ...hfEls],
         fonts,
+        layout: { pages, order: snapshot.order },
       });
       if (target) {
         const out = await target.createWritable();
@@ -455,7 +481,7 @@ export function useEditor() {
     const like = selText[0];
     const top = margin ?? 36;
     const el = newText({
-      page: at?.page ?? like?.page ?? 0,
+      page: at?.page ?? like?.page ?? orderRef.current[0].src,
       text: text.replace(/\r\n?/g, "\n").trim(),
       x: at?.x ?? like?.x ?? top,
       y: at?.y ?? (like ? like.y + like.size * LINE_HEIGHT : top),
@@ -473,7 +499,10 @@ export function useEditor() {
           .then((t) => (t.trim() ? pasteText(t, at) : Promise.reject()))
           .catch(() => setReport({ ok: false, lines: ["Nothing to paste yet. Copy something first."] }));
   const duplicate = () => addCopies(selected, 10, 10);
-  const selectAll = () => setSel(elsRef.current.filter((x) => !x.deleted).map((x) => x.id));
+  const selectAll = () => {
+    const shown = new Set(orderRef.current.map((s) => s.src));
+    setSel(elsRef.current.filter((x) => !x.deleted && shown.has(x.page)).map((x) => x.id));
+  };
   const canReset = selected.some((e) => e.orig && isDirty(e));
   const bold = selText.length > 0 && selText.every((e) => isBoldName(e.font));
   const italic = selText.length > 0 && selText.every((e) => isItalicName(e.font));
@@ -560,9 +589,11 @@ export function useEditor() {
     setSel([first.id]);
   };
 
-  const nudge = (dx: number, dy: number) => {
+  const rotationOf = (src: number) => orderRef.current.find((s) => s.src === src)?.rotate ?? 0;
+  const nudge = (du: number, dv: number) => {
     const moves = new Map<number, [number, number]>();
     for (const p of new Set(selected.map((x) => x.page))) {
+      const [dx, dy] = unrotateDelta(rotationOf(p), du, dv);
       const area = inside(p);
       const group = bounds(selected.filter((x) => x.page === p).map(boxOf));
       moves.set(p, area ? confine(group, dx, dy, area) : [dx, dy]);
@@ -622,10 +653,37 @@ export function useEditor() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: open the panel when a selection starts, not on every change to it
   useEffect(() => void (sel.length && (setTab("edit"), setPanelOpen(true))), [sel.length > 0]);
 
+  const movePage = (from: number, to: number) => {
+    const o = orderRef.current;
+    if (to < 0 || to >= o.length || from === to) return;
+    const next = [...o];
+    next.splice(to, 0, ...next.splice(from, 1));
+    commitOrder(next);
+  };
+  const rotatePage = (at: number, by: number) =>
+    commitOrder(orderRef.current.map((s, i) => (i === at ? { ...s, rotate: (s.rotate + by + 360) % 360 } : s)));
+  const deletePage = (at: number) => {
+    const o = orderRef.current;
+    if (o.length < 2) return;
+    const gone = o[at].src;
+    setSel((s) => s.filter((id) => elById.get(id)?.page !== gone));
+    commitOrder(o.filter((_, i) => i !== at));
+  };
+  const insertBlank = (after: number) => {
+    const near = orderRef.current[after];
+    const pg = pages[near.src];
+    const [w, h] = turned(near.rotate) ? [pg.h, pg.w] : [pg.w, pg.h];
+    setPages((ps) => [...ps, { w, h, rotated: false, blank: true }]);
+    const next = [...orderRef.current];
+    next.splice(after + 1, 0, { src: pages.length, rotate: 0 });
+    commitOrder(next);
+  };
+  const positionOf = (src: number) => orderRef.current.findIndex((s) => s.src === src);
+
   const fitWidth = () => {
     const m = pagesRef.current;
     if (!m || !pages.length) return;
-    const widest = Math.max(...pages.map((p) => p.w));
+    const widest = Math.max(...orderRef.current.map((s) => (turned(s.rotate) ? pages[s.src].h : pages[s.src].w)));
     setScale(clampScale(Math.floor(((m.clientWidth - 64) / widest) * 20) / 20));
   };
   const zoomBy = (d: number) => setScale((s) => clampScale(Math.round((s + d) * 100) / 100));
@@ -667,8 +725,7 @@ export function useEditor() {
   const onElMove = (e: PointerEvent) => {
     const d = drag.current;
     if (!d) return;
-    const rawX = (e.clientX - d.x) / scale,
-      rawY = (e.clientY - d.y) / scale;
+    const [rawX, rawY] = unrotateDelta(rotationOf(d.page), (e.clientX - d.x) / scale, (e.clientY - d.y) / scale);
     if (Math.abs(rawX) + Math.abs(rawY) < 2 / scale && lastTouch.current !== d.touch) return;
     const whole = e.ctrlKey || e.metaKey;
     const s = e.shiftKey
@@ -721,7 +778,14 @@ export function useEditor() {
 
   const pointOn = (e: { clientX: number; clientY: number; currentTarget: Element }, page: number): At => {
     const r = e.currentTarget.getBoundingClientRect();
-    return { page, x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+    const [x, y] = unrotate(
+      rotationOf(page),
+      e.clientX - r.left,
+      e.clientY - r.top,
+      pages[page].w * scale,
+      pages[page].h * scale,
+    );
+    return { page, x: x / scale, y: y / scale };
   };
   const onPageDown = (e: PointerEvent<HTMLDivElement>, page: number) => {
     if (e.button !== 0) return;
@@ -771,8 +835,9 @@ export function useEditor() {
       },
       resizeMove: (e, el) => {
         if (!resizing.current) return;
-        const page = (e.currentTarget as HTMLElement).closest(".page")!.getBoundingClientRect();
-        const right = Math.min((e.clientX - page.left) / scale, inside(el.page)?.r ?? Infinity);
+        const page = (e.currentTarget as HTMLElement).closest(".page")!;
+        const at = pointOn({ clientX: e.clientX, clientY: e.clientY, currentTarget: page }, el.page);
+        const right = Math.min(at.x, inside(el.page)?.r ?? Infinity);
         const left = boxOf(el).l;
         const wrap = Math.max(el.size * 2, Math.round(right - left));
         patch([el.id], { wrap, x: left + wrap * alignShift(el.align) }, resizing.current);
@@ -817,6 +882,7 @@ export function useEditor() {
     reopen,
     file,
     pages,
+    order,
     els,
     sel,
     setSel,
@@ -897,6 +963,12 @@ export function useEditor() {
     fitWidth,
     zoomBy,
     goToPage,
+    movePage,
+    rotatePage,
+    deletePage,
+    insertBlank,
+    positionOf,
+    rotationOf,
     onPagesScroll,
     elHandlers,
     pageHandlers,

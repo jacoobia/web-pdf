@@ -1,6 +1,6 @@
 import { type ReactElement, useEffect, useRef } from "react";
 import type { Editor } from "../lib/editor";
-import { type El, isDirty, type PageInfo } from "../lib/model";
+import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
 import { HeaderFooterItem, PageItem } from "./PageItem";
 import { StartScreen } from "./StartScreen";
@@ -10,7 +10,8 @@ import "./PageCanvas.css";
 type Cached = { deps: unknown[]; node: ReactElement };
 
 export function PageCanvas({ editor }: { editor: Editor }) {
-  const { file, pages, scale, adding, margin, band, guides, fonts, one, sel, byPage, hfByPage, previews } = editor;
+  const { file, pages, order, scale, adding, margin, band, guides, fonts, one, sel, byPage, hfByPage, previews } =
+    editor;
   const pagesRef = editor.pagesRef;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: these change the scroll area's size, so re-measure on them
@@ -26,7 +27,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     ro.observe(m);
     for (const child of m.children) ro.observe(child);
     return () => ro.disconnect();
-  }, [file, pages, scale, editor.canvasStyle]);
+  }, [file, order, scale, editor.canvasStyle]);
 
   const selSet = new Set(sel);
   const views = useRef(new WeakMap<El, { key: string; fonts: Map<string, Uint8Array>; node: ReactElement }>());
@@ -59,10 +60,12 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     if (e) selByPage.set(e.page, `${(selByPage.get(e.page) ?? "") + id},`);
   }
   const pageViews = useRef(new Map<number, Cached>());
-  const pageView = (pg: PageInfo, p: number) => {
+  const pageView = ({ src: p, rotate }: Slot) => {
+    const pg = pages[p];
     const isNear = previews.near.has(p);
     const deps = [
       pg,
+      rotate,
       scale,
       adding,
       isNear,
@@ -78,39 +81,46 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     const hit = pageViews.current.get(p);
     if (hit?.deps.every((d, i) => d === deps[i])) return hit.node;
     const on = editor.pageHandlers;
+    const [w, h] = [pg.w * scale, pg.h * scale];
     const node = (
       <div
         key={p}
         ref={previews.observePage}
         data-page={p}
         className={adding ? "page adding" : "page"}
-        style={{ width: pg.w * scale, height: pg.h * scale }}
+        style={turned(rotate) ? { width: h, height: w } : { width: w, height: h }}
         onPointerDown={(e) => (e.stopPropagation(), on.down(e, p))}
         onPointerMove={on.move}
         onPointerUp={on.up}
         onContextMenu={(e) => on.menu(e, p)}
       >
-        <canvas ref={previews.canvasRef(p)} />
-        {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
-        {band?.page === p && (
-          <div
-            className="marquee"
-            style={{
-              left: band.l * scale,
-              top: band.t * scale,
-              width: (band.r - band.l) * scale,
-              height: (band.b - band.t) * scale,
-            }}
-          />
-        )}
-        {guides?.page === p && guides.x !== undefined && <div className="guide v" style={{ left: guides.x * scale }} />}
-        {guides?.page === p && guides.y !== undefined && <div className="guide h" style={{ top: guides.y * scale }} />}
-        {isNear &&
-          (byPage.get(p) ?? [])
-            .filter((el) => !el.deleted)
-            .sort((a, b) => +!!b.image - +!!a.image)
-            .map(itemView)}
-        {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
+        <div className="page-content" style={{ width: w, height: h, transform: contentTransform(rotate, w, h) }}>
+          <canvas ref={previews.canvasRef(p)} />
+          {margin !== null && <div className="margin-guide" style={{ inset: margin * scale }} />}
+          {band?.page === p && (
+            <div
+              className="marquee"
+              style={{
+                left: band.l * scale,
+                top: band.t * scale,
+                width: (band.r - band.l) * scale,
+                height: (band.b - band.t) * scale,
+              }}
+            />
+          )}
+          {guides?.page === p && guides.x !== undefined && (
+            <div className="guide v" style={{ left: guides.x * scale }} />
+          )}
+          {guides?.page === p && guides.y !== undefined && (
+            <div className="guide h" style={{ top: guides.y * scale }} />
+          )}
+          {isNear &&
+            (byPage.get(p) ?? [])
+              .filter((el) => !el.deleted)
+              .sort((a, b) => +!!b.image - +!!a.image)
+              .map(itemView)}
+          {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
+        </div>
       </div>
     );
     pageViews.current.set(p, { deps, node });
@@ -132,7 +142,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
             This PDF has rotated pages. Edits on those pages will land in the wrong place.
           </Callout>
         )}
-        {pages.map(pageView)}
+        {order.map(pageView)}
       </main>
       {editor.canvasStyle && file && (
         <div className="zoom-float" role="group" aria-label="Zoom">

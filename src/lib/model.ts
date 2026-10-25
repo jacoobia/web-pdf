@@ -26,7 +26,46 @@ export type El = Style & {
   link?: string;
 };
 
-export type PageInfo = { w: number; h: number; rotated: boolean };
+export type PageInfo = { w: number; h: number; rotated: boolean; blank?: boolean };
+
+/** One page as shown: `src` indexes `pages`, `rotate` is extra clockwise rotation in degrees. */
+export type Slot = { src: number; rotate: number };
+export const identityOrder = (pages: PageInfo[]): Slot[] => pages.map((_, src) => ({ src, rotate: 0 }));
+
+const quarter = (rotate: number) => (((rotate % 360) + 360) % 360) / 90;
+export const turned = (rotate: number) => quarter(rotate) % 2 === 1;
+
+export function contentTransform(rotate: number, w: number, h: number) {
+  return [
+    undefined,
+    `translateX(${h}px) rotate(90deg)`,
+    `translate(${w}px, ${h}px) rotate(180deg)`,
+    `translateY(${w}px) rotate(270deg)`,
+  ][quarter(rotate)];
+}
+
+/** A point (u, v) on a page shown rotated, back in the page's own unrotated coordinates (w x h). */
+export function unrotate(rotate: number, u: number, v: number, w: number, h: number): [number, number] {
+  return (
+    [
+      [u, v],
+      [v, h - u],
+      [w - u, h - v],
+      [w - v, u],
+    ] as [number, number][]
+  )[quarter(rotate)];
+}
+
+export function unrotateDelta(rotate: number, du: number, dv: number): [number, number] {
+  return (
+    [
+      [du, dv],
+      [dv, -du],
+      [-du, -dv],
+      [-dv, du],
+    ] as [number, number][]
+  )[quarter(rotate)];
+}
 
 export const LINE_HEIGHT = 1.2;
 
@@ -162,10 +201,11 @@ export type HeaderFooter = Style & {
 
 const ALIGNS = ["left", "center", "right"] as const;
 
-export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
+export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[], order = identityOrder(pages)): El[] {
   const els: El[] = [];
-  pages.forEach((pg, p) => {
-    if (hf.skipFirst && p === 0) return;
+  order.forEach(({ src }, n) => {
+    const pg = pages[src];
+    if (hf.skipFirst && n === 0) return;
     const rows = [
       ["h", hf.header, hf.margin],
       ["f", hf.footer, pg.h - hf.margin - hf.size],
@@ -174,13 +214,13 @@ export function headerFooterEls(hf: HeaderFooter, pages: PageInfo[]): El[] {
       texts.forEach((text, i) => {
         if (!text.trim()) return;
         els.push({
-          id: `hf-${row}${i}-${p}`,
-          page: p,
+          id: `hf-${row}${i}-${src}`,
+          page: src,
           y,
           ascent: 0.8,
           align: ALIGNS[i],
           x: [hf.margin, pg.w / 2, pg.w - hf.margin][i],
-          text: text.replace(/\{page\}/g, String(p + 1)).replace(/\{pages\}/g, String(pages.length)),
+          text: text.replace(/\{page\}/g, String(n + 1)).replace(/\{pages\}/g, String(order.length)),
           font: hf.font,
           size: hf.size,
           color: hf.color,

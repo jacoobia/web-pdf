@@ -34,6 +34,16 @@
   border-radius: 2px;
   outline: 1px solid var(--border);
   overflow: hidden;
+  position: relative;
+}
+.thumb-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.thumb.drop .thumb-page {
+  box-shadow: 0 -6px 0 -3px var(--accent);
 }
 .thumb-page canvas {
   display: block;
