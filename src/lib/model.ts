@@ -20,7 +20,7 @@ export type El = Style & {
   deleted?: boolean;
   orig?: Style & { text: string; x: number; y: number; rect: Rect; link?: string };
   align?: "left" | "center" | "right";
-  image?: { w: number; h: number; page: number; index: number };
+  image?: { w: number; h: number; page: number; index: number; key?: string };
   wrap?: number;
   lineHeight?: number;
   link?: string;
@@ -246,7 +246,8 @@ export function isDirty(el: El): boolean {
     el.font !== o.font ||
     el.wrap !== undefined ||
     el.lineHeight !== undefined ||
-    el.align !== undefined
+    el.align !== undefined ||
+    (!!el.image && (el.image.w !== o.rect.w || el.image.h !== o.rect.h))
   );
 }
 
@@ -304,6 +305,8 @@ export function replaceMatches(text: string, matches: number[], length: number, 
 
 export const META_FIELDS = ["title", "author", "subject", "keywords"] as const;
 export type Meta = Record<(typeof META_FIELDS)[number], string> & { hidden: string[]; strip: boolean };
+
+export type ImageFile = { bytes: Uint8Array; type: "png" | "jpg" };
 
 export type Removed = { text: Rect[]; images: Rect[] };
 

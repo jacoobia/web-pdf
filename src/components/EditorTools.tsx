@@ -30,6 +30,12 @@ export const ModeTools = ({ editor }: { editor: Editor }) => (
       onClick={() => editor.setAdding(true)}
       disabled={!editor.file}
     />
+    <IconButton
+      icon="image"
+      label="Add image"
+      onClick={() => editor.imageInput.current?.click()}
+      disabled={!editor.file}
+    />
   </>
 );
 

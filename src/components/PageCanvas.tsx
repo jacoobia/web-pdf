@@ -34,7 +34,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
   const itemView = (el: El) => {
     const selected = selSet.has(el.id),
       single = one?.id === el.id;
-    const imageSrc = el.image && isDirty(el) ? previews.imageUrl(el.image) : undefined;
+    const imageSrc = el.image && isDirty(el) ? editor.imageSrcOf(el.image) : undefined;
     const key = `${scale}|${selected}|${single}|${imageSrc}`;
     const hit = views.current.get(el);
     if (hit && hit.key === key && hit.fonts === fonts) return hit.node;

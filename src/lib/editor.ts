@@ -21,6 +21,7 @@ import {
   fontKey,
   type HeaderFooter,
   headerFooterEls,
+  type ImageFile,
   identityOrder,
   isBoldName,
   isDirty,
@@ -131,6 +132,9 @@ export function useEditor() {
   const [currentPage, setCurrentPage] = useState(0);
 
   const pdfInput = useRef<HTMLInputElement>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const [added, setAdded] = useState(new Map<string, ImageFile>());
+  const addedUrls = useRef(new Map<string, string>());
   const pagesRef = useRef<HTMLElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
   const elsRef = useRef<El[]>([]);
@@ -392,14 +396,74 @@ export function useEditor() {
     setOrder(draft.order);
     setHf(draft.hf);
     if (draft.meta) setMeta(draft.meta);
+    for (const [key, f] of draft.images ?? [])
+      addedUrls.current.set(
+        key,
+        URL.createObjectURL(new Blob([f.bytes as BlobPart], { type: f.type === "jpg" ? "image/jpeg" : "image/png" })),
+      );
+    if (draft.images?.length) setAdded((m) => new Map([...m, ...draft.images!]));
     setReport({ ok: true, lines: ["Restored your unsaved edits."] });
   };
+
+  const toImageFile = async (blob: Blob): Promise<ImageFile & { w: number; h: number }> => {
+    const bitmap = await createImageBitmap(blob);
+    const [w, h] = [bitmap.width, bitmap.height];
+    if (blob.type === "image/png" || blob.type === "image/jpeg") {
+      bitmap.close();
+      return { bytes: new Uint8Array(await blob.arrayBuffer()), type: blob.type === "image/png" ? "png" : "jpg", w, h };
+    }
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const png = await canvas.convertToBlob({ type: "image/png" });
+    return { bytes: new Uint8Array(await png.arrayBuffer()), type: "png", w, h };
+  };
+  const insertImage = async (blob: Blob, at?: At) => {
+    try {
+      const { w, h, ...file } = await toImageFile(blob);
+      const key = crypto.randomUUID();
+      addedUrls.current.set(
+        key,
+        URL.createObjectURL(
+          new Blob([file.bytes as BlobPart], { type: `image/${file.type === "jpg" ? "jpeg" : "png"}` }),
+        ),
+      );
+      setAdded((m) => new Map(m).set(key, file));
+      const page = at?.page ?? (positionOf(currentPage) >= 0 ? currentPage : orderRef.current[0].src);
+      const pg = pages[page];
+      const fit = Math.min(1, (pg.w * 0.4) / (w * 0.75), (pg.h * 0.4) / (h * 0.75));
+      const [iw, ih] = [Math.round(w * 0.75 * fit), Math.round(h * 0.75 * fit)];
+      const el: El = {
+        id: `new-${crypto.randomUUID()}`,
+        page,
+        text: "",
+        x: Math.round(at?.x ?? (pg.w - iw) / 2),
+        y: Math.round(at?.y ?? (pg.h - ih) / 2),
+        ascent: 0,
+        size: 0,
+        color: "",
+        font: "",
+        srcFont: "",
+        bold: false,
+        italic: false,
+        image: { w: iw, h: ih, page: -1, index: -1, key },
+      };
+      commit([...elsRef.current, el]);
+      setSel([el.id]);
+      setTab("edit");
+    } catch (err) {
+      setReport({ ok: false, lines: [`Couldn't add that image: ${errorText(err)}`] });
+    }
+  };
+  const imageSrcOf = (img: NonNullable<El["image"]>) =>
+    img.key ? addedUrls.current.get(img.key) : previews.imageUrl(img);
 
   const openFiles = async (files: FileList | null, handles: (Promise<FileSystemHandle | null> | undefined)[] = []) => {
     for (const [i, f] of [...(files ?? [])].entries()) {
       if (/\.pdf$/i.test(f.name))
         await openPdf(f, ((await handles[i]?.catch(() => null)) as FileSystemFileHandle | null) ?? undefined);
       else if (/\.(ttf|otf)$/i.test(f.name)) await addFont(new Uint8Array(await f.arrayBuffer()), f.name);
+      else if (f.type.startsWith("image/") && file) await insertImage(f);
       else setReport({ ok: false, lines: [`${f.name}: open a .pdf, or a .ttf/.otf font.`] });
     }
   };
@@ -437,7 +501,12 @@ export function useEditor() {
       layout: { pages, order: o },
       compression,
       meta: metaChanged() && meta ? meta : undefined,
+      images: usedImages(list),
     });
+  const usedImages = (list: El[]) => {
+    const keys = new Set(list.flatMap((e) => (e.image?.key && !e.deleted ? [e.image.key] : [])));
+    return new Map([...added].filter(([k]) => keys.has(k)));
+  };
   const [ats, setAts] = useState<{ report?: AtsReport; busy?: boolean } | null>(null);
   const checkAts = async () => {
     setAts({ busy: true });
@@ -447,6 +516,7 @@ export function useEditor() {
         els: [...elsRef.current, ...hfEls],
         fonts,
         layout: { pages, order: orderRef.current },
+        images: usedImages(elsRef.current),
       });
       setAts({ report });
     } catch (err) {
@@ -713,6 +783,8 @@ export function useEditor() {
       if (isTyping(e.target) || !file) return;
       clearTimeout(pasteTimer.current);
       e.preventDefault();
+      const picture = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+      if (picture) return void insertImage(picture);
       const text = e.clipboardData?.getData("text/plain") ?? "";
       const c = clip.current;
       const same = (t: string) => t.replace(/\r\n?/g, "\n").trim() === c?.text.trim();
@@ -746,10 +818,11 @@ export function useEditor() {
         hf,
         meta,
         fonts: [...fonts].filter(([k]) => used.has(k)),
+        images: [...usedImages(list)],
       });
     }, 1000);
     return () => clearTimeout(t);
-  }, [file, els, order, hf, pages, fonts, meta]);
+  }, [file, els, order, hf, pages, fonts, meta, added]);
 
   const RESTORE = "Restore edits";
   const prompted = useRef(false);
@@ -979,6 +1052,14 @@ export function useEditor() {
         if (!resizing.current) return;
         const page = (e.currentTarget as HTMLElement).closest(".page")!;
         const at = pointOn({ clientX: e.clientX, clientY: e.clientY, currentTarget: page }, el.page);
+        if (el.image) {
+          const w = Math.max(8, Math.round(Math.min(at.x, inside(el.page)?.r ?? Infinity) - el.x));
+          return patch(
+            [el.id],
+            { image: { ...el.image, w, h: Math.round((w * el.image.h) / el.image.w) } },
+            resizing.current,
+          );
+        }
         const right = Math.min(at.x, inside(el.page)?.r ?? Infinity);
         const left = boxOf(el).l;
         const wrap = Math.max(el.size * 2, Math.round(right - left));
@@ -1063,6 +1144,9 @@ export function useEditor() {
     band,
     currentPage,
     pdfInput,
+    imageInput,
+    insertImage,
+    imageSrcOf,
     pagesRef,
     textBox,
     byPage,

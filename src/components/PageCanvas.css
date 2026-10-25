@@ -130,6 +130,16 @@
     height: max(24px, 60%);
   }
 }
+.resize.corner {
+  top: auto;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  transform: none;
+  border-radius: 3px;
+  cursor: nwse-resize;
+}
 .zoom-float {
   position: absolute;
   left: calc(50% - var(--scrollbar-w, 0px) / 2);

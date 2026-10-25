@@ -1,4 +1,4 @@
-import type { AtsReport, Compression, El, Layout, Meta, PageInfo, Removed } from "./pdf";
+import type { AtsReport, Compression, El, ImageFile, Layout, Meta, PageInfo, Removed } from "./pdf";
 
 export type WorkerIn =
   | { type: "open"; id: number; bytes: Uint8Array }
@@ -12,8 +12,16 @@ export type WorkerIn =
       layout?: Layout;
       compression?: Compression;
       meta?: Meta;
+      images?: Map<string, ImageFile>;
     }
-  | { type: "ats"; id: number; els: El[]; fonts: Map<string, Uint8Array>; layout?: Layout };
+  | {
+      type: "ats";
+      id: number;
+      els: El[];
+      fonts: Map<string, Uint8Array>;
+      layout?: Layout;
+      images?: Map<string, ImageFile>;
+    };
 
 export type Replies = {
   open: { pages: PageInfo[]; els: El[]; meta: Meta };
@@ -51,8 +59,19 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
       return reply(data.id, { png }, [png.buffer as ArrayBuffer]);
     }
     if (data.type === "ats")
-      return reply(data.id, atsCheck((await exportPdf(bytes, data.els, data.fonts, data.layout)).pdf));
-    const { pdf, problems } = await exportPdf(bytes, data.els, data.fonts, data.layout, data.compression, data.meta);
+      return reply(
+        data.id,
+        atsCheck((await exportPdf(bytes, data.els, data.fonts, data.layout, "off", undefined, data.images)).pdf),
+      );
+    const { pdf, problems } = await exportPdf(
+      bytes,
+      data.els,
+      data.fonts,
+      data.layout,
+      data.compression,
+      data.meta,
+      data.images,
+    );
     reply(data.id, { pdf, problems }, [pdf.buffer as ArrayBuffer]);
   } catch (err) {
     if (data.type === "render")

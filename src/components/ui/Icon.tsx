@@ -158,6 +158,13 @@ const ICONS = {
       <rect x="5" y="13" width="14" height="9" rx="1.5" />
     </>
   ),
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      {p("m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21")}
+    </>
+  ),
   feedback: p("M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"),
 } satisfies Record<string, ReactNode>;
 

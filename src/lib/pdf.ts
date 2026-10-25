@@ -9,6 +9,7 @@ import {
   fallbackFont,
   HYPHEN_CHARS,
   HYPHENS,
+  type ImageFile,
   isBoldName,
   isDirty,
   isItalicName,
@@ -415,13 +416,14 @@ export async function exportPdf(
   layout?: Layout,
   compression: Compression = "off",
   meta?: Meta,
+  added: Map<string, ImageFile> = new Map(),
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
   for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
     doc.insertPage(doc.countPages(), doc.addPage([0, 0, pg.w, pg.h], 0, doc.newDictionary(), ""));
   const pngs = new Map<string, Uint8Array>();
   for (const el of els)
-    if (el.image && !el.deleted && isDirty(el)) {
+    if (el.image && !el.image.key && !el.deleted && isDirty(el)) {
       const key = `${el.image.page}:${el.image.index}`;
       if (!pngs.has(key)) pngs.set(key, imagePng(doc, el.image.page, el.image.index));
     }
@@ -462,8 +464,18 @@ export async function exportPdf(
     const page = pages[el.page];
     const box = page.getCropBox();
     if (el.image) {
-      const key = `${el.image.page}:${el.image.index}`;
-      if (!images.has(key)) images.set(key, await out.embedPng(pngs.get(key)!));
+      const key = el.image.key ?? `${el.image.page}:${el.image.index}`;
+      const file = el.image.key ? added.get(el.image.key) : undefined;
+      if (el.image.key && !file) throw new Error("An added image is missing. Add it again.");
+      if (!images.has(key))
+        images.set(
+          key,
+          await (file
+            ? file.type === "jpg"
+              ? out.embedJpg(file.bytes)
+              : out.embedPng(file.bytes)
+            : out.embedPng(pngs.get(key)!)),
+        );
       page.drawImage(images.get(key)!, {
         x: box.x + el.x,
         y: box.y + box.height - el.y - el.image.h,

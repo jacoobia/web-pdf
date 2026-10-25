@@ -65,6 +65,15 @@ export const PageItem = memo(function PageItem({
           onDoubleClick={(e) => (e.stopPropagation(), on.unwrap(el.id))}
         />
       )}
+      {single && el.image && (
+        <span
+          className="resize corner"
+          title="Drag to resize"
+          onPointerDown={on.resizeStart}
+          onPointerMove={(e) => on.resizeMove(e, el)}
+          onPointerUp={on.resizeEnd}
+        />
+      )}
     </div>
   );
 });

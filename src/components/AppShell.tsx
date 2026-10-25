@@ -30,6 +30,17 @@ export function AppShell({ editor, children }: { editor: Editor; children: React
         hidden
         onChange={(e) => (editor.openFiles(e.target.files), (e.target.value = ""))}
       />
+      <input
+        ref={editor.imageInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) editor.insertImage(f);
+          e.target.value = "";
+        }}
+      />
       {children}
     </div>
   );
