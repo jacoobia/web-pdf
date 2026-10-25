@@ -1,4 +1,4 @@
-import { type ReactElement, useEffect, useRef } from "react";
+import { type ReactElement, useEffect, useMemo, useRef } from "react";
 import type { Editor } from "../lib/editor";
 import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
@@ -128,6 +128,24 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     return node;
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pageHandlers is stable
+  const bars = useMemo(
+    () =>
+      order.map((slot, at) => {
+        const pg = pages[slot.src];
+        return (
+          <AddBar
+            key={`add-${slot.src}`}
+            className="page-add"
+            style={{ width: (turned(slot.rotate) ? pg.h : pg.w) * scale }}
+            label={`Add a blank page after page ${at + 1}`}
+            onAdd={() => editor.pageHandlers.add(at)}
+          />
+        );
+      }),
+    [order, pages, scale],
+  );
+
   return (
     <>
       <main
@@ -143,19 +161,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
             This PDF has rotated pages. Edits on those pages will land in the wrong place.
           </Callout>
         )}
-        {order.map((slot, at) => {
-          const pg = pages[slot.src];
-          return [
-            pageView(slot, at),
-            <AddBar
-              key={`add-${slot.src}`}
-              className="page-add"
-              style={{ width: (turned(slot.rotate) ? pg.h : pg.w) * scale }}
-              label={`Add a blank page after page ${at + 1}`}
-              onAdd={() => editor.pageHandlers.add(at)}
-            />,
-          ];
-        })}
+        {order.flatMap((slot, at) => [pageView(slot, at), bars[at]])}
       </main>
       {editor.canvasStyle && file && (
         <div className="zoom-float" role="group" aria-label="Zoom">

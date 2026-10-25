@@ -66,6 +66,7 @@ export function usePreviews({
   const thumbsAsked = useRef(new Set<number>());
   const imageUrls = useRef(new Map<string, string | null>());
   const [imageVersion, imageLoaded] = useState(0);
+  const [mounts, remounted] = useState(0);
   const [near, observePage, resetNear] = useVisible(".pages", "100% 0px", FIRST_PAGES);
   const [thumbNear, observeThumb, resetThumbs] = useVisible(".rail", "300px 0px", () => new Set(), true);
 
@@ -123,7 +124,7 @@ export function usePreviews({
       }
     }, 30);
     return () => clearTimeout(t);
-  }, [open, pages, order, byPage, scale, near]);
+  }, [open, pages, order, byPage, scale, near, mounts]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: post is stable
   useEffect(() => {
@@ -140,7 +141,7 @@ export function usePreviews({
           original: true,
         });
       }
-  }, [open, thumbs, thumbNear, pages]);
+  }, [open, thumbs, thumbNear, pages, mounts]);
 
   const imageUrl = (img: NonNullable<El["image"]>) => {
     const key = `${img.page}:${img.index}`;
@@ -167,10 +168,29 @@ export function usePreviews({
     resetNear();
   };
 
-  const canvasRef = (p: number) => (c: HTMLCanvasElement | null) =>
-    void (c ? canvases.current.set(p, c) : canvases.current.delete(p));
-  const thumbRef = (p: number) => (c: HTMLCanvasElement | null) =>
-    void (c ? thumbCanvases.current.set(p, c) : thumbCanvases.current.delete(p));
+  // A canvas React mounts afresh is blank, so forget what was drawn for that page and render it again.
+  const refs = useRef(new Map<string, (c: HTMLCanvasElement | null) => void>());
+  const stableRef = (
+    key: string,
+    store: Map<number, HTMLCanvasElement>,
+    drawn: { delete(p: number): void },
+    p: number,
+  ) => {
+    let ref = refs.current.get(key);
+    if (!ref) {
+      ref = (c) => {
+        if (!c) return void store.delete(p);
+        if (store.get(p) === c) return;
+        store.set(p, c);
+        drawn.delete(p);
+        remounted((n) => n + 1);
+      };
+      refs.current.set(key, ref);
+    }
+    return ref;
+  };
+  const canvasRef = (p: number) => stableRef(`p${p}`, canvases.current, wanted.current, p);
+  const thumbRef = (p: number) => stableRef(`t${p}`, thumbCanvases.current, thumbsAsked.current, p);
 
   return { request, near, observePage, observeThumb, canvasRef, thumbRef, imageUrl, imageVersion, clear };
 }

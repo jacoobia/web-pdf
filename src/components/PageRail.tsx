@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { cx } from "../lib/cx";
 import type { Editor } from "../lib/editor";
 import { contentTransform, turned } from "../lib/model";
@@ -13,10 +13,11 @@ export function PageRail({ editor }: { editor: Editor }) {
   const [menu, setMenu] = useState<{ at: number; left: number; top: number } | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
-  return (
-    <nav className="rail" aria-label="Pages">
-      <p className="rail-title">Pages</p>
-      {order.map(({ src: p, rotate }, at) => {
+  const edited = [...editedPages].join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rebuilt only when thumbnails change, not on every keystroke; its handlers read refs
+  const thumbs = useMemo(
+    () =>
+      order.map(({ src: p, rotate }, at) => {
         const pg = pages[p];
         const tall = THUMB * (turned(rotate) ? pg.w / pg.h : pg.h / pg.w);
         const [w, h] = turned(rotate) ? [tall, THUMB] : [THUMB, tall];
@@ -57,7 +58,13 @@ export function PageRail({ editor }: { editor: Editor }) {
             </span>
           </button>
         );
-      })}
+      }),
+    [pages, order, currentPage, edited, dragging, dropAt],
+  );
+  return (
+    <nav className="rail" aria-label="Pages">
+      <p className="rail-title">Pages</p>
+      {thumbs}
       {menu && <Menu at={menu} onClose={() => setMenu(null)} items={pageActions(editor, menu.at)} />}
     </nav>
   );
