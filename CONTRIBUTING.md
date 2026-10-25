@@ -11,7 +11,7 @@ Open an issue saying what you did, what you expected and what happened instead, 
 1. Fork the repo and create a branch.
 2. `bun install`, then `bun run dev`.
 3. Make your change. Keep it focused on one thing.
-4. Run `bun run lint`, `bun run typecheck` and, on Windows, `bun run test`.
+4. Run `bun run lint`, `bun run typecheck` and, on Windows, `bun run test` and `bun run test:e2e` (needs Node 24 and Chrome).
 5. Open a pull request saying what changed and why.
 
 The pre-commit hook runs Biome on staged files and the typechecker. Commit messages are a single lower-case line of 72 characters or fewer, starting with the type of change: `feat: add a settings menu`, `fix: wrap long words`. The types are `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`, `ci`, `build`, `style` and `revert`. There's no message body, but trailers such as `Co-Authored-By:` can go after a blank line. The commit-msg hook checks this.

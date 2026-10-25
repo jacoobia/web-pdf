@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
-import { PDFDocument as LibDoc } from "pdf-lib";
+import { PDFDocument as LibDoc, PDFName } from "pdf-lib";
 import {
   alignShift,
   atsCheck,
@@ -9,15 +9,20 @@ import {
   exportPdf,
   extract,
   familyOf,
+  findMatches,
   fontKey,
   headerFooterEls,
   identityOrder,
+  isDirty,
   measure,
+  mergePdf,
   normaliseLink,
   Previewer,
+  parsePageList,
   pickFace,
   removedOn,
   renderPage,
+  replaceMatches,
   unrotate,
   unrotateDelta,
   wrapLines,
@@ -359,6 +364,154 @@ assert.ok(
   atsCheck(big).issues.some((i) => i.includes("columns")),
   "two-column layout flagged",
 );
+
+// find and replace: every occurrence, case-insensitive unless asked, replaced from the end
+const findEls = [
+  { ...centred(), id: "a", text: "Agent agent AGENT" },
+  { ...centred(), id: "b", text: "aaaa" },
+];
+assert.deepEqual(
+  findMatches(findEls, "agent", false).map((m) => `${m.id}${m.at}`),
+  ["a0", "a6", "a12"],
+);
+assert.deepEqual(
+  findMatches(findEls, "Agent", true).map((m) => `${m.id}${m.at}`),
+  ["a0"],
+);
+assert.deepEqual(
+  findMatches(findEls, "aa", false).map((m) => `${m.id}${m.at}`),
+  ["b0", "b2"],
+  "back-to-back matches don't overlap",
+);
+assert.deepEqual(findMatches(findEls, "", false), []);
+assert.equal(replaceMatches("cat sat cat", [0, 8], 3, "tiger"), "tiger sat tiger");
+assert.equal(replaceMatches("cat sat cat", [0, 8], 3, "x"), "x sat x");
+
+// page lists for "save some pages"
+assert.deepEqual(parsePageList("1-3, 5", 6), [0, 1, 2, 4]);
+assert.deepEqual(parsePageList("3-1", 6), [2, 1, 0], "ranges can count down");
+assert.deepEqual(parsePageList("2, 2, 1-2", 6), [1, 0], "duplicates dropped");
+for (const bad of ["0", "7", "a", "", "1-", "1,,"])
+  assert.deepEqual(parsePageList(bad, 6), bad === "1,," ? [0] : null, bad);
+
+// merging: pages are appended after any blank pages, and existing element ids don't change
+const merged = mergePdf(src, big, []);
+const mergedDoc = mupdf.Document.openDocument(merged.pdf, "application/pdf");
+assert.equal(mergedDoc.countPages(), 5);
+assert.equal(merged.first, 1);
+assert.equal(pageText(merged.pdf, 0), pageText(src, 0));
+assert.equal(pageText(merged.pdf, 1), pageText(big, 0));
+assert.equal(pageText(merged.pdf, 4), pageText(big, 3));
+const withBlank = mergePdf(src, big, [{ w: 300, h: 400, rotated: false, blank: true }]);
+assert.equal(withBlank.first, 2, "the blank page became a real page first");
+assert.deepEqual(
+  mupdf.Document.openDocument(withBlank.pdf, "application/pdf").loadPage(1).getBounds().map(Math.round),
+  [0, 0, 300, 400],
+);
+const idsBefore = extract(src).els.map((e) => e.id);
+assert.deepEqual(
+  extract(merged.pdf)
+    .els.filter((e) => e.page === 0)
+    .map((e) => e.id),
+  idsBefore,
+  "ids for the original pages are unchanged",
+);
+
+// document info: read the four fields and the hidden details, write changes, strip on request
+const metaDoc = await LibDoc.create();
+metaDoc.addPage([595, 842]).drawText("Metadata page", { x: 40, y: 760, size: 14 });
+metaDoc.setTitle("Old title");
+metaDoc.setAuthor("Jane Example");
+metaDoc.setSubject("A CV");
+metaDoc.setKeywords(["cv", "widgets"]);
+metaDoc.setCreator("Word Processor 9");
+metaDoc.setProducer("PDF Maker 2");
+metaDoc.setCreationDate(new Date(2020, 0, 1));
+metaDoc.setModificationDate(new Date(2021, 0, 1));
+metaDoc.catalog.set(
+  PDFName.of("Metadata"),
+  metaDoc.context.register(
+    metaDoc.context.stream("<x:xmpmeta xmlns:x='adobe:ns:meta/'/>", { Type: "Metadata", Subtype: "XML" }),
+  ),
+);
+const metaPdf = await metaDoc.save({ updateFieldAppearances: false });
+const meta = extract(metaPdf).meta;
+assert.deepEqual(
+  [meta.title, meta.author, meta.subject, meta.keywords],
+  ["Old title", "Jane Example", "A CV", "cv widgets"],
+);
+assert.equal(meta.hidden.length, 4, `hidden details: ${meta.hidden}`);
+const info = (pdf: Uint8Array, key: string) =>
+  mupdf.Document.openDocument(pdf, "application/pdf").getMetaData(`info:${key}`) ?? "";
+const metaEls = extract(metaPdf).els;
+const renamed = (
+  await exportPdf(metaPdf, metaEls, new Map(), undefined, "off", { ...meta, title: "New title", author: "" })
+).pdf;
+assert.equal(info(renamed, "Title"), "New title");
+assert.equal(info(renamed, "Author"), "", "cleared author is removed");
+assert.equal(info(renamed, "Creator"), "Word Processor 9", "hidden details kept unless stripped");
+const stripped = await exportPdf(metaPdf, metaEls, new Map(), undefined, "off", { ...meta, strip: true });
+assert.deepEqual(stripped.problems, []);
+for (const k of ["Creator", "Producer", "CreationDate", "ModDate"])
+  assert.equal(info(stripped.pdf, k), "", `${k} stripped`);
+const strippedDoc = mupdf.Document.openDocument(stripped.pdf, "application/pdf") as mupdf.PDFDocument;
+assert.ok(!strippedDoc.getTrailer().get("Root").get("Metadata").isStream(), "XMP stripped");
+assert.equal(info(stripped.pdf, "Title"), "Old title", "visible fields kept when stripping");
+assert.match(pageText(stripped.pdf, 0), /Metadata page/);
+const untouched = (await exportPdf(metaPdf, metaEls, new Map())).pdf;
+for (const k of ["Title", "Creator", "Producer", "ModDate"])
+  assert.equal(info(untouched, k), info(metaPdf, k), `${k} unchanged`);
+
+// added images: PNG and JPEG keys are embedded where placed; a missing key is reported
+const pngPix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 40, 20], false);
+pngPix.clear(90);
+const added = new Map([
+  ["png", { bytes: pngPix.asPNG(), type: "png" as const }],
+  ["jpg", { bytes: photo(80, 40, 3), type: "jpg" as const }],
+]);
+const addedEl = (id: string, key: string, x: number): El => ({
+  ...centred(),
+  id,
+  text: "",
+  x,
+  y: 300,
+  size: 0,
+  font: "",
+  align: undefined,
+  wrap: undefined,
+  image: { w: 100, h: 50, page: -1, index: -1, key },
+});
+const withImages = await exportPdf(
+  src,
+  [...extract(src).els, addedEl("i1", "png", 50), addedEl("i2", "jpg", 300)],
+  new Map(),
+  undefined,
+  "off",
+  undefined,
+  added,
+);
+const boxes: number[][] = [];
+mupdf.Document.openDocument(withImages.pdf, "application/pdf")
+  .loadPage(0)
+  .toStructuredText("preserve-images")
+  .walk({ onImageBlock: (b) => void boxes.push(b.map(Math.round)) });
+assert.equal(boxes.length, 3, "two added images plus the original");
+assert.ok(
+  boxes.some((b) => b[0] === 50 && b[1] === 300 && b[2] === 150 && b[3] === 350),
+  `png placed: ${JSON.stringify(boxes)}`,
+);
+assert.ok(
+  boxes.some((b) => b[0] === 300 && b[2] === 400),
+  "jpeg placed",
+);
+await assert.rejects(
+  exportPdf(src, [addedEl("i3", "gone", 0)], new Map(), undefined, "off", undefined, added),
+  /missing/,
+);
+const resized = extract(src).els.find((e) => e.image)!;
+assert.equal(isDirty(resized), false);
+resized.image = { ...resized.image!, w: resized.image!.w * 2, h: resized.image!.h * 2 };
+assert.equal(isDirty(resized), true, "resizing an original image redraws it");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

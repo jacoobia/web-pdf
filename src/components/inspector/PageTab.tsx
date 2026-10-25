@@ -70,7 +70,7 @@ export function PageTab({ editor }: { editor: Editor }) {
               onKeyDown={(e) => e.key === "Enter" && split.trim() && editor.savePages(split)}
             />
             <Button disabled={!split.trim()} onClick={() => editor.savePages(split)}>
-              Save
+              Save pages
             </Button>
           </div>
         </Field>

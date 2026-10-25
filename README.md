@@ -31,16 +31,19 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 ## Features
 
 - Edit existing text in place. Edits are drawn in the PDF's own font when it's available.
+- Find and replace text across the whole document, with spell check as you type.
 - Add new text boxes that wrap to a width you set, with bold, italic and alignment.
 - Add and edit links on text, such as an email address or a portfolio.
 - Move, copy and delete text and images, with snapping to nearby text.
-- Reorder, rotate, delete and add blank pages.
+- Add images such as a photo or signature, and resize any image on the page.
+- Reorder, rotate, delete and add blank pages, add the pages of another PDF, or save some pages on their own.
 - Add headers and footers with page numbers.
 - Shrink large images when saving to fit upload limits.
+- Edit the title and author, and remove hidden details such as the app that made the file.
 - Check how applicant tracking software will read a CV.
 - Edits are saved in your browser as you go, so a closed tab doesn't lose work.
 - Undo, redo, multi-select and a right-click menu.
-- Light and dark themes, and a layout that works on phones.
+- Light and dark themes, and a layout that works on phones, with pinch to zoom.
 
 ### How it works
 
@@ -78,7 +81,8 @@ bun run dev
 | `bun run lint` | Lint and check formatting |
 | `bun run format` | Fix lint and formatting issues |
 | `bun run typecheck` | Run the TypeScript compiler |
-| `bun run test` | Run the end-to-end checks (Windows only) |
+| `bun run test` | Run the PDF engine checks (Windows only) |
+| `bun run test:e2e` | Run the browser checks in Chrome (Windows only, needs Node 24) |
 
 ## Deploying
 

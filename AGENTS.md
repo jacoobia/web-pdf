@@ -35,7 +35,8 @@ Solve problems with the platform and the packages already in `package.json`. Get
 ## Checks
 
 - Changes to `src/lib/pdf.ts`, `src/lib/model.ts` or `src/lib/snap.ts` add an assertion to `scripts/check.ts`.
-- Work is done when `bun run lint`, `bun run typecheck`, `bun run test` (Windows) and `bun run build` pass, and UI changes have been tried in `bun run dev`. Report any failures as they are.
+- UI changes add a browser check to `scripts/e2e.ts`.
+- Work is done when `bun run lint`, `bun run typecheck`, `bun run test` and `bun run test:e2e` (Windows) and `bun run build` pass, and UI changes have been tried in `bun run dev`. Report any failures as they are.
 
 ## Commits
 
