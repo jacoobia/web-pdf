@@ -1,4 +1,5 @@
 .add-bar {
+  position: relative;
   display: grid;
   place-items: center;
   padding: 0;
@@ -6,7 +7,9 @@
   background: none;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 120ms;
+  transition:
+    opacity 120ms,
+    height 150ms;
 }
 .add-bar::before {
   content: "";
@@ -23,15 +26,9 @@
 .add-bar:focus-visible {
   outline: none;
 }
-.add-bar-plus {
+.add-bar svg {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
+  color: var(--accent-fg);
 }
 @media (hover: none) {
   .add-bar {

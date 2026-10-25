@@ -19,11 +19,13 @@
   user-select: none;
 }
 .page-add {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
+  flex: none;
   height: var(--page-gap);
+  margin: calc(-1 * var(--page-gap)) auto;
+}
+.page-add:hover,
+.page-add:focus-visible {
+  height: calc(var(--page-gap) + 16px);
 }
 .page.adding {
   cursor: crosshair;
@@ -151,13 +153,9 @@
   .page-add::before {
     inset: 2px 0;
   }
-  .page-add .add-bar-plus {
-    width: 14px;
-    height: 14px;
-  }
-  .page-add .add-bar-plus svg {
-    width: 10px;
-    height: 10px;
+  .page-add svg {
+    width: 12px;
+    height: 12px;
   }
 
   .page {

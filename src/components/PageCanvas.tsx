@@ -122,7 +122,6 @@ export function PageCanvas({ editor }: { editor: Editor }) {
               .map(itemView)}
           {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
         </div>
-        <AddBar className="page-add" label={`Add a blank page after page ${at + 1}`} onAdd={() => on.add(at)} />
       </div>
     );
     pageViews.current.set(p, { deps, node });
@@ -144,7 +143,19 @@ export function PageCanvas({ editor }: { editor: Editor }) {
             This PDF has rotated pages. Edits on those pages will land in the wrong place.
           </Callout>
         )}
-        {order.map(pageView)}
+        {order.map((slot, at) => {
+          const pg = pages[slot.src];
+          return [
+            pageView(slot, at),
+            <AddBar
+              key={`add-${slot.src}`}
+              className="page-add"
+              style={{ width: (turned(slot.rotate) ? pg.h : pg.w) * scale }}
+              label={`Add a blank page after page ${at + 1}`}
+              onAdd={() => editor.pageHandlers.add(at)}
+            />,
+          ];
+        })}
       </main>
       {editor.canvasStyle && file && (
         <div className="zoom-float" role="group" aria-label="Zoom">
