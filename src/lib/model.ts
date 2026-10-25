@@ -282,6 +282,26 @@ export const formatBytes = (n: number) =>
 
 export type AtsReport = { pages: string[]; issues: string[] };
 
+export type Match = { id: string; at: number };
+
+/** Every occurrence of `query` in the text of `els`, in the order given. */
+export function findMatches(els: El[], query: string, matchCase: boolean): Match[] {
+  if (!query) return [];
+  const q = matchCase ? query : query.toLowerCase();
+  const out: Match[] = [];
+  for (const e of els) {
+    const t = matchCase ? e.text : e.text.toLowerCase();
+    for (let at = t.indexOf(q); at !== -1; at = t.indexOf(q, at + q.length)) out.push({ id: e.id, at });
+  }
+  return out;
+}
+
+export function replaceMatches(text: string, matches: number[], length: number, replacement: string) {
+  let out = text;
+  for (const at of [...matches].sort((a, b) => b - a)) out = out.slice(0, at) + replacement + out.slice(at + length);
+  return out;
+}
+
 export type Removed = { text: Rect[]; images: Rect[] };
 
 export function removedOn(els: El[], page: number): Removed {

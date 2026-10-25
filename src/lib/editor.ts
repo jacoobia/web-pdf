@@ -17,6 +17,7 @@ import {
   compact,
   type El,
   familyOf,
+  findMatches,
   fontKey,
   type HeaderFooter,
   headerFooterEls,
@@ -25,8 +26,10 @@ import {
   isDirty,
   isItalicName,
   LINE_HEIGHT,
+  type Match,
   type PageInfo,
   pickFace,
+  replaceMatches,
   type Slot,
   STANDARD_FONTS,
   turned,
@@ -674,6 +677,7 @@ export function useEditor() {
         if (!isTyping(e.target)) e.preventDefault(), key === "y" || e.shiftKey ? redo() : undo();
         return;
       }
+      if (mod && (key === "f" || key === "h") && file) return e.preventDefault(), setFindOpen(true);
       if (mod && (key === "b" || key === "i") && selText.length)
         return e.preventDefault(), void toggleStyle(key === "b" ? "bold" : "italic");
       if (isTyping(e.target)) return;
@@ -790,6 +794,30 @@ export function useEditor() {
   }, [pages]);
   const goToPage = (p: number) =>
     pagesRef.current?.querySelector(`.page[data-page="${p}"]`)?.scrollIntoView({ block: "start" });
+
+  const [findOpen, setFindOpen] = useState(false);
+  const searchable = () => {
+    const at = new Map(orderRef.current.map((s, i) => [s.src, i]));
+    return elsRef.current
+      .filter((e) => !e.image && !e.deleted && at.has(e.page))
+      .sort((a, b) => at.get(a.page)! - at.get(b.page)! || a.y - b.y || a.x - b.x);
+  };
+  const find = (query: string, matchCase: boolean) => findMatches(searchable(), query, matchCase);
+  const showMatch = (m: Match) => {
+    const el = elById.get(m.id);
+    if (!el) return;
+    setSel([m.id]);
+    const show = () =>
+      document.querySelector(`[data-id="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", inline: "nearest" });
+    if (document.querySelector(`[data-id="${CSS.escape(m.id)}"]`)) show();
+    else goToPage(el.page), setTimeout(show, 150);
+  };
+  const replaceIn = (matches: Match[], length: number, replacement: string) => {
+    const byId = new Map<string, number[]>();
+    for (const m of matches) byId.set(m.id, [...(byId.get(m.id) ?? []), m.at]);
+    patch([...byId.keys()], (e) => ({ text: replaceMatches(e.text, byId.get(e.id)!, length, replacement) }));
+    return byId.size;
+  };
   const onPagesScroll = (e: UIEvent<HTMLElement>) => {
     const m = e.currentTarget,
       line = m.scrollTop + m.clientHeight / 3;
@@ -1069,6 +1097,11 @@ export function useEditor() {
     fitWidth,
     zoomBy,
     goToPage,
+    findOpen,
+    setFindOpen,
+    find,
+    showMatch,
+    replaceIn,
     movePage,
     rotatePage,
     deletePage,

@@ -2,6 +2,7 @@ import { AppHeader } from "../components/AppHeader";
 import { AppShell, Workspace } from "../components/AppShell";
 import { AtsDialog } from "../components/AtsDialog";
 import { ContextMenu } from "../components/ContextMenu";
+import { FindBar } from "../components/FindBar";
 import { Inspector } from "../components/Inspector";
 import { PageCanvas } from "../components/PageCanvas";
 import { PageRail } from "../components/PageRail";
@@ -18,6 +19,7 @@ export default function EditorRoute() {
       {editor.showThumbs && file && <PageRail editor={editor} />}
       <Workspace>
         <PageCanvas editor={editor} />
+        {file && editor.findOpen && <FindBar editor={editor} />}
         {canvasStyle && file && <Inspector editor={editor} />}
       </Workspace>
       {!canvasStyle && file && <Inspector editor={editor} />}

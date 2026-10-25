@@ -1,6 +1,7 @@
 import type { Editor } from "../lib/editor";
 import {
   FeedbackButton,
+  FindButton,
   HistoryTools,
   ModeTools,
   PanelToggle,
@@ -44,6 +45,7 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
           </Group>
           <Group label="History">
             <HistoryTools editor={editor} />
+            <FindButton editor={editor} />
           </Group>
           <Group label="Tools">
             <ModeTools editor={editor} />
@@ -109,6 +111,7 @@ function CanvasHeader({ editor }: { editor: Editor }) {
           </Group>
           <Group label="History" plain>
             <HistoryTools editor={editor} />
+            <FindButton editor={editor} />
           </Group>
         </div>
       )}

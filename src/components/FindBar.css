@@ -1,0 +1,43 @@
+.find-bar {
+  position: absolute;
+  z-index: 12;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 4px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--float);
+}
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.find-row > svg {
+  flex: none;
+  color: var(--muted);
+}
+.find-row .input {
+  flex: 1;
+  min-width: 0;
+}
+.find-row .muted {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+}
+.find-bar .check {
+  min-height: 28px;
+  font-size: var(--text-sm);
+}
+@media (max-width: 760px) {
+  .find-bar {
+    top: 8px;
+  }
+}

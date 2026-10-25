@@ -80,6 +80,10 @@ export function ThumbsToggle({ editor }: { editor: Editor }) {
   );
 }
 
+export const FindButton = ({ editor }: { editor: Editor }) => (
+  <IconButton icon="search" label="Find and replace" shortcut="Ctrl+F" onClick={() => editor.setFindOpen(true)} />
+);
+
 export const SettingsButton = ({ editor }: { editor: Editor }) => (
   <IconButton icon="settings" label="Settings" onClick={() => editor.setSettingsOpen(true)} />
 );
