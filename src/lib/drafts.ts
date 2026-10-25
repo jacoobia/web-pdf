@@ -1,4 +1,4 @@
-import { type El, type HeaderFooter, isDirty, linkChanged, type PageInfo, type Slot } from "./model";
+import { type El, type HeaderFooter, isDirty, linkChanged, type Meta, type PageInfo, type Slot } from "./model";
 import { stored } from "./storage";
 
 export type Draft = {
@@ -9,6 +9,7 @@ export type Draft = {
   order: Slot[];
   hf: HeaderFooter;
   fonts: [string, Uint8Array][];
+  meta?: Meta | null;
 };
 
 export const changed = (e: El) => !e.orig || isDirty(e) || linkChanged(e);

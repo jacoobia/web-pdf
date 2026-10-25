@@ -14,6 +14,8 @@ import {
   isItalicName,
   LINE_HEIGHT,
   linkChanged,
+  META_FIELDS,
+  type Meta,
   measure,
   normaliseLink,
   type PageInfo,
@@ -81,7 +83,42 @@ function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Arr
 type Ch = { c: string; ox: number; oy: number; l: number; r: number; t: number; b: number };
 type Run = { name: string; size: number; color: string; bold: boolean; italic: boolean; chars: Ch[] };
 
-export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
+const INFO_KEY = { title: "Title", author: "Author", subject: "Subject", keywords: "Keywords" } as const;
+const HIDDEN_KEYS = ["Creator", "Producer", "CreationDate", "ModDate"];
+
+function readMeta(doc: mupdf.PDFDocument): Meta {
+  const info = doc.getTrailer().get("Info");
+  const text = (key: string) =>
+    info.isDictionary() && info.get(key).isString() ? info.get(key).asString().trim() : "";
+  const hidden: string[] = [];
+  if (text("Creator")) hidden.push(`Made with ${text("Creator")}`);
+  if (text("Producer") && text("Producer") !== text("Creator")) hidden.push(`Produced by ${text("Producer")}`);
+  if (text("CreationDate") || text("ModDate")) hidden.push("When it was created and last changed");
+  if (doc.getTrailer().get("Root").get("Metadata").isStream())
+    hidden.push("An XMP metadata block, which can repeat these details");
+  const meta = { hidden, strip: false } as Meta;
+  for (const f of META_FIELDS) meta[f] = text(INFO_KEY[f]);
+  return meta;
+}
+
+function writeMeta(pdf: Uint8Array, meta: Meta) {
+  const doc = open(pdf);
+  const trailer = doc.getTrailer();
+  let info = trailer.get("Info");
+  if (!info.isDictionary()) trailer.put("Info", (info = doc.addObject(doc.newDictionary())));
+  for (const f of META_FIELDS)
+    if (meta[f].trim()) info.put(INFO_KEY[f], doc.newString(meta[f].trim()));
+    else info.delete(INFO_KEY[f]);
+  if (meta.strip) {
+    for (const k of HIDDEN_KEYS) info.delete(k);
+    trailer.get("Root").delete("Metadata");
+  }
+  const out = save(doc, "garbage=compact,compress");
+  doc.destroy();
+  return out;
+}
+
+export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta: Meta } {
   const doc = open(bytes);
   const pages: PageInfo[] = [];
   const els: El[] = [];
@@ -180,7 +217,7 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
         if (hit) el.link = el.orig.link = hit.uri;
       }
   }
-  return { pages, els };
+  return { pages, els, meta: readMeta(doc) };
 }
 
 function rewriteLinks(doc: mupdf.PDFDocument, els: El[], fonts: Map<string, Uint8Array>) {
@@ -377,6 +414,7 @@ export async function exportPdf(
   fonts: Map<string, Uint8Array>,
   layout?: Layout,
   compression: Compression = "off",
+  meta?: Meta,
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
   for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
@@ -393,7 +431,7 @@ export async function exportPdf(
   const cleaned = saved.asUint8Array().slice();
   saved.destroy();
 
-  const out = await PDFDocument.load(cleaned);
+  const out = await PDFDocument.load(cleaned, { updateMetadata: false });
   out.registerFontkit(fontkit);
   const embedded = new Map<string, { font: PDFFont; has: (ch: string) => boolean }>();
   const embed = async (key: string) => {
@@ -457,7 +495,8 @@ export async function exportPdf(
       });
     });
   }
-  const drawn = await out.save();
+  const written = await out.save();
+  const drawn = meta ? writeMeta(written, meta) : written;
   const squeeze = (pdf: Uint8Array) => (compression === "off" ? pdf : compress(pdf, compression));
   if (!layout || isIdentity(layout)) {
     const pdf = squeeze(drawn);

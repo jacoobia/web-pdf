@@ -302,6 +302,9 @@ export function replaceMatches(text: string, matches: number[], length: number, 
   return out;
 }
 
+export const META_FIELDS = ["title", "author", "subject", "keywords"] as const;
+export type Meta = Record<(typeof META_FIELDS)[number], string> & { hidden: string[]; strip: boolean };
+
 export type Removed = { text: Rect[]; images: Rect[] };
 
 export function removedOn(els: El[], page: number): Removed {

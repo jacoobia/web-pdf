@@ -27,6 +27,8 @@ import {
   isItalicName,
   LINE_HEIGHT,
   type Match,
+  META_FIELDS,
+  type Meta,
   type PageInfo,
   pickFace,
   replaceMatches,
@@ -100,6 +102,8 @@ export function useEditor() {
   const [estimate, setEstimate] = useState<{ bytes: number; compression: Compression; busy?: boolean } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [order, setOrder] = useState<Slot[]>([]);
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const fileMeta = useRef<Meta | null>(null);
   const [els, setEls] = useState<El[]>([]);
   const [sel, setSel] = useState<string[]>([]);
   const [fonts, setFonts] = useState(new Map<string, Uint8Array>());
@@ -140,7 +144,11 @@ export function useEditor() {
   const resizing = useRef("");
   const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
   const pasteTimer = useRef(0);
-  const saved = useRef<{ els: El[]; hf: HeaderFooter | null; order: Slot[] }>({ els: [], hf: null, order: [] });
+  const saved = useRef<{ els: El[]; hf: HeaderFooter | null; order: Slot[]; meta?: Meta | null }>({
+    els: [],
+    hf: null,
+    order: [],
+  });
   const drag = useRef<{
     x: number;
     y: number;
@@ -251,7 +259,10 @@ export function useEditor() {
   };
 
   const unsaved = () =>
-    elsRef.current !== saved.current.els || hf !== saved.current.hf || orderRef.current !== saved.current.order;
+    elsRef.current !== saved.current.els ||
+    hf !== saved.current.hf ||
+    orderRef.current !== saved.current.order ||
+    meta !== saved.current.meta;
   const clearPreviews = () => {
     previews.clear();
     clip.current = null;
@@ -330,7 +341,7 @@ export function useEditor() {
       setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
       clearPreviews();
-      const { pages, els } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
+      const { pages, els, meta: found } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
       const draft = await loadDraft(f.name, f.size);
       pendingDraft.current = draft ?? null;
       let list = els;
@@ -340,7 +351,9 @@ export function useEditor() {
       elsRef.current = list;
       const first = identityOrder(pages);
       orderRef.current = first;
-      saved.current = { els: list, hf, order: first };
+      fileMeta.current = found;
+      setMeta(found);
+      saved.current = { els: list, hf, order: first, meta: found };
       setFile({ name: f.name, size: f.size, handle });
       setEstimate(null);
       remember(f.name, handle, f);
@@ -378,6 +391,7 @@ export function useEditor() {
     setPages(draft.pages);
     setOrder(draft.order);
     setHf(draft.hf);
+    if (draft.meta) setMeta(draft.meta);
     setReport({ ok: true, lines: ["Restored your unsaved edits."] });
   };
 
@@ -414,6 +428,7 @@ export function useEditor() {
       });
   };
 
+  const metaChanged = () => !!meta && (meta.strip || META_FIELDS.some((f) => meta[f] !== fileMeta.current?.[f]));
   const build = (list: El[], o: Slot[]) =>
     previews.request<"export">({
       type: "export",
@@ -421,6 +436,7 @@ export function useEditor() {
       fonts,
       layout: { pages, order: o },
       compression,
+      meta: metaChanged() && meta ? meta : undefined,
     });
   const [ats, setAts] = useState<{ report?: AtsReport; busy?: boolean } | null>(null);
   const checkAts = async () => {
@@ -466,7 +482,7 @@ export function useEditor() {
     const name = target?.name ?? suggestedName;
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
-      const snapshot = { els: elsRef.current, hf, order: orderRef.current };
+      const snapshot = { els: elsRef.current, hf, order: orderRef.current, meta };
       const { pdf, problems } = await build(snapshot.els, snapshot.order);
       if (target) {
         const out = await target.createWritable();
@@ -728,11 +744,12 @@ export function useEditor() {
         pages,
         order: orderRef.current,
         hf,
+        meta,
         fonts: [...fonts].filter(([k]) => used.has(k)),
       });
     }, 1000);
     return () => clearTimeout(t);
-  }, [file, els, order, hf, pages, fonts]);
+  }, [file, els, order, hf, pages, fonts, meta]);
 
   const RESTORE = "Restore edits";
   const prompted = useRef(false);
@@ -1007,6 +1024,8 @@ export function useEditor() {
     forget,
     reopen,
     file,
+    meta,
+    setMeta,
     compression,
     setCompression,
     estimate,
