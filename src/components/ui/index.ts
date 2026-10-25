@@ -12,6 +12,6 @@ export { Segmented } from "./Segmented";
 export { Setting, SettingGroup } from "./Setting";
 export { Swatches } from "./Swatches";
 export { Switch } from "./Switch";
-export { Badge, Callout, Dot, Kbd, List, Muted, Spinner, Tag } from "./Text";
+export { Badge, Callout, Dot, Kbd, List, Muted, Pre, Spinner, Tag } from "./Text";
 export { TextLink } from "./TextLink";
 export { Toast } from "./Toast";

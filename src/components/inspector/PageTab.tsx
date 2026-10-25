@@ -84,6 +84,12 @@ export function PageTab({ editor }: { editor: Editor }) {
         </Row>
         <Muted>Large images are scaled down and saved as JPEG. Text and vector graphics aren't changed.</Muted>
       </Section>
+      <Section title="ATS check">
+        <Muted>See your text the way applicant tracking software reads it, with anything that may trip it up.</Muted>
+        <Row>
+          <Button onClick={editor.checkAts}>Check how ATS reads it</Button>
+        </Row>
+      </Section>
       <Section title="Header & footer">
         {(["header", "footer"] as const).map((row) => (
           <Grid key={row} cols={3}>

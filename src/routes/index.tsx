@@ -1,5 +1,6 @@
 import { AppHeader } from "../components/AppHeader";
 import { AppShell, Workspace } from "../components/AppShell";
+import { AtsDialog } from "../components/AtsDialog";
 import { ContextMenu } from "../components/ContextMenu";
 import { Inspector } from "../components/Inspector";
 import { PageCanvas } from "../components/PageCanvas";
@@ -21,6 +22,7 @@ export default function EditorRoute() {
       </Workspace>
       {!canvasStyle && file && <Inspector editor={editor} />}
       <ContextMenu editor={editor} />
+      <AtsDialog editor={editor} />
       {report && <Toast {...report} onDismiss={() => editor.setReport(null)} />}
       {editor.settingsOpen && (
         <Settings

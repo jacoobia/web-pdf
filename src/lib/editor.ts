@@ -10,6 +10,7 @@ import {
 import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalFont, PDF_TYPE } from "./browser";
 import {
   type Align,
+  type AtsReport,
   alignShift,
   type Compression,
   compact,
@@ -389,6 +390,22 @@ export function useEditor() {
       layout: { pages, order: o },
       compression,
     });
+  const [ats, setAts] = useState<{ report?: AtsReport; busy?: boolean } | null>(null);
+  const checkAts = async () => {
+    setAts({ busy: true });
+    try {
+      const report = await previews.request<"ats">({
+        type: "ats",
+        els: [...elsRef.current, ...hfEls],
+        fonts,
+        layout: { pages, order: orderRef.current },
+      });
+      setAts({ report });
+    } catch (err) {
+      setAts(null);
+      setReport({ ok: false, lines: [`Couldn't check the text: ${errorText(err)}`] });
+    }
+  };
   const checkSize = async () => {
     setEstimate({ bytes: 0, compression, busy: true });
     try {
@@ -903,6 +920,9 @@ export function useEditor() {
     setCompression,
     estimate,
     checkSize,
+    ats,
+    checkAts,
+    closeAts: () => setAts(null),
     pages,
     order,
     els,

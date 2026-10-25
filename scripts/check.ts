@@ -3,6 +3,7 @@ import * as mupdf from "mupdf";
 import { PDFDocument as LibDoc } from "pdf-lib";
 import {
   alignShift,
+  atsCheck,
   compress,
   type El,
   exportPdf,
@@ -340,6 +341,24 @@ smallDoc
 assert.ok(widest > 0 && widest <= 1200, `image downscaled to ${widest}px`);
 assert.match(smallDoc.loadPage(0).toStructuredText("preserve-whitespace").asText(), /Photo page/);
 assert.ok(compress(small, "small").length <= small.length, "compressing twice never grows the file");
+
+// ats check: clean text passes; small text, image-only pages and columns are flagged
+assert.deepEqual(atsCheck(src).issues, [], "the sample reads cleanly");
+assert.match(atsCheck(src).pages[0], /^Jane Example/);
+const tiny = await exportPdf(src, [{ ...centred(), align: undefined, wrap: undefined, size: 6 }], new Map());
+assert.ok(
+  atsCheck(tiny.pdf).issues.some((i) => i.includes("smaller than 8 pt")),
+  "small text flagged",
+);
+const scanDoc = await LibDoc.create();
+scanDoc
+  .addPage([595, 842])
+  .drawImage(await scanDoc.embedJpg(photo(300, 200, 2)), { x: 0, y: 0, width: 595, height: 842 });
+assert.ok(atsCheck(await scanDoc.save()).issues[0].includes("only images"), "scanned page flagged");
+assert.ok(
+  atsCheck(big).issues.some((i) => i.includes("columns")),
+  "two-column layout flagged",
+);
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

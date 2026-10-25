@@ -2,6 +2,7 @@ import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
 import { PDFDocument, type PDFFont, type PDFImage, rgb } from "pdf-lib";
 import {
+  type AtsReport,
   type Compression,
   cleanFontName,
   type El,
@@ -466,6 +467,74 @@ export async function exportPdf(
   const at = new Map(layout.order.map((s, i) => [s.src, i]));
   const shown = els.filter((e) => at.has(e.page)).map((e) => ({ ...e, page: at.get(e.page)! }));
   return { pdf, problems: verify(pdf, shown) };
+}
+
+const SMALL_TEXT = 8;
+
+const ATS_ISSUES = {
+  scanned: ["has", "have", "no selectable text, only images. ATS software can't read scanned pages."],
+  unreadable: [
+    "has",
+    "have",
+    "characters that won't read back as normal text. The font may be missing a text encoding.",
+  ],
+  ligatures: ["uses", "use", 'joined letters such as "ﬁ" or "ﬂ". Some ATS software reads these as one odd character.'],
+  small: ["has", "have", `text smaller than ${SMALL_TEXT} pt, which can be hard to parse.`],
+  columns: [
+    "has",
+    "have",
+    "text in columns. ATS software reads it in the order shown below, so check it still makes sense.",
+  ],
+} as const;
+
+const pageList = (ns: number[]) =>
+  ns.length === 1
+    ? `Page ${ns[0]}`
+    : ns.every((n, i) => !i || n === ns[i - 1] + 1)
+      ? `Pages ${ns[0]} to ${ns.at(-1)}`
+      : `Pages ${ns.slice(0, -1).join(", ")} and ${ns.at(-1)}`;
+
+export function atsCheck(pdf: Uint8Array): AtsReport {
+  const doc = open(pdf);
+  const pages: string[] = [];
+  const found = new Map<keyof typeof ATS_ISSUES, number[]>();
+  const flag = (kind: keyof typeof ATS_ISSUES, n: number) => found.set(kind, [...(found.get(kind) ?? []), n]);
+  for (let p = 0; p < doc.countPages(); p++) {
+    const page = doc.loadPage(p);
+    const st = page.toStructuredText(STEXT);
+    const text = st.asText().trim();
+    pages.push(text);
+    const n = p + 1;
+    let images = 0,
+      smallest = Infinity;
+    const lines: mupdf.Rect[] = [];
+    st.walk({
+      onImageBlock: () => void images++,
+      beginLine: (box) => void lines.push(box),
+      onChar: (c, _o, _f, size) => void (c.trim() && (smallest = Math.min(smallest, size))),
+    });
+    if (!text) {
+      if (images) flag("scanned", n);
+      continue;
+    }
+    if (/[\uFFFD\uE000-\uF8FF]/.test(text)) flag("unreadable", n);
+    if (/[\uFB00-\uFB06]/.test(text)) flag("ligatures", n);
+    if (smallest < SMALL_TEXT) flag("small", n);
+    const [x0, , x1] = page.getBounds();
+    const wide = lines.filter((l) => l[2] - l[0] > 0.25 * (x1 - x0));
+    const rows = wide.filter((a) =>
+      wide.some(
+        (c) => c[0] >= a[2] && Math.min(a[3], c[3]) - Math.max(a[1], c[1]) > 0.5 * Math.min(a[3] - a[1], c[3] - c[1]),
+      ),
+    );
+    if (rows.length >= 3) flag("columns", n);
+  }
+  doc.destroy();
+  const issues = [...found].map(([kind, ns]) => {
+    const [one, many, rest] = ATS_ISSUES[kind];
+    return `${pageList(ns)} ${ns.length === 1 ? one : many} ${rest}`;
+  });
+  return { pages, issues };
 }
 
 const norm = (s: string) => s.replace(HYPHENS, "-").replace(/\s+/g, " ").trim();

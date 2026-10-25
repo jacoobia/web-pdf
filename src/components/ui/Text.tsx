@@ -20,6 +20,8 @@ export const Badge = ({ title, children }: { title?: string; children: ReactNode
   </span>
 );
 
+export const Pre = ({ children }: { children: ReactNode }) => <pre className="pre">{children}</pre>;
+
 export const Spinner = () => <span className="spinner" aria-hidden="true" />;
 
 export const List = ({ items, variant }: { items: ReactNode[]; variant?: "muted" }) => (

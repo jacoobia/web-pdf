@@ -1,0 +1,20 @@
+.ats {
+  gap: 14px;
+  padding-top: 12px;
+}
+.ats-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.ats-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ats-page h3 {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
