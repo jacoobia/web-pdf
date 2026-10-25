@@ -31,9 +31,14 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 ## Features
 
 - Edit existing text in place. Edits are drawn in the PDF's own font when it's available.
-- Add new text boxes that wrap to a width you set.
+- Add new text boxes that wrap to a width you set, with bold, italic and alignment.
+- Add and edit links on text, such as an email address or a portfolio.
 - Move, copy and delete text and images, with snapping to nearby text.
+- Reorder, rotate, delete and add blank pages.
 - Add headers and footers with page numbers.
+- Shrink large images when saving to fit upload limits.
+- Check how applicant tracking software will read a CV.
+- Edits are saved in your browser as you go, so a closed tab doesn't lose work.
 - Undo, redo, multi-select and a right-click menu.
 - Light and dark themes, and a layout that works on phones.
 
