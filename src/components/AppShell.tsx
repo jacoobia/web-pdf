@@ -15,6 +15,8 @@ export function AppShell({ editor, children }: { editor: Editor; children: React
         file ? "has-file" : "no-file",
         file && panelOpen && "panel-open",
       )}
+      lang={prefs.spelling === "off" ? undefined : prefs.spelling}
+      spellCheck={prefs.spelling !== "off"}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();

@@ -138,6 +138,21 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
         </Setting>
       </SettingGroup>
       <SettingGroup title="Editing">
+        <Setting
+          title="Spell check"
+          description="Underlines misspelt words as you type, using your browser's dictionary."
+        >
+          <Segmented
+            label="Spell check"
+            value={prefs.spelling}
+            onChange={(v) => set("spelling", v)}
+            options={[
+              ["en-GB", "UK"],
+              ["en-US", "US"],
+              ["off", "Off"],
+            ]}
+          />
+        </Setting>
         <Setting title="Snap to other text" description="Hold Shift while dragging to move freely.">
           <Switch
             label="Snap to other text"

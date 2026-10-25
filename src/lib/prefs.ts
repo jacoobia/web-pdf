@@ -14,6 +14,7 @@ export const DEFAULT_PREFS = {
   side: "right",
   thumbs: "1",
   snap: "1",
+  spelling: "en-GB",
   marginOn: "0",
   marginPt: "36",
 };
@@ -46,6 +47,7 @@ export function usePrefs() {
     side: usePref("side", DEFAULT_PREFS.side),
     thumbs: usePref("thumbs", DEFAULT_PREFS.thumbs),
     snap: usePref("snap", DEFAULT_PREFS.snap),
+    spelling: usePref("spelling", DEFAULT_PREFS.spelling),
     marginOn: usePref("marginOn", DEFAULT_PREFS.marginOn),
     marginPt: usePref("marginPt", DEFAULT_PREFS.marginPt),
   };
