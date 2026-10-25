@@ -187,10 +187,12 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
 
 const CREDITS = [
   <>
-    <TextLink href="https://mupdf.com">MuPDF</TextLink> reads, renders and removes text (AGPL-3.0)
+    <TextLink href="https://mupdf.com">MuPDF</TextLink> reads, renders, edits and saves PDFs (AGPL-3.0)
   </>,
   <>
-    <TextLink href="https://pdf-lib.js.org">pdf-lib</TextLink> writes the new text and fonts (MIT)
+    <TextLink href="https://pdf-lib.js.org">pdf-lib</TextLink> and{" "}
+    <TextLink href="https://github.com/foliojs/fontkit">fontkit</TextLink> measure text so the preview wraps like the
+    saved file (MIT)
   </>,
   <>
     <TextLink href="https://github.com/IBM/plex">IBM Plex Sans</TextLink> is the interface font (SIL Open Font License)

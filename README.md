@@ -39,7 +39,7 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Reorder, rotate, delete and add blank pages, add the pages of another PDF, or save some pages on their own.
 - Add headers and footers with page numbers.
 - Shrink large images when saving to fit upload limits.
-- Edit the title and author, and remove hidden details such as the app that made the file.
+- Edit the title, author, subject and keywords in the Info tab, and remove hidden details such as the app that made the file. Saved copies are marked as made with Web PDF unless you remove the hidden details.
 - Check how applicant tracking software will read a CV.
 - Edits are saved in your browser as you go, so a closed tab doesn't lose work.
 - Undo, redo, multi-select and a right-click menu.
@@ -49,8 +49,8 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 
 | | |
 | --- | --- |
-| Reading and rendering | [MuPDF](https://mupdf.com), in a web worker |
-| Writing new text | [pdf-lib](https://pdf-lib.js.org) |
+| Reading, rendering and saving | [MuPDF](https://mupdf.com), in a web worker |
+| Measuring text for the preview | [pdf-lib](https://pdf-lib.js.org) and [fontkit](https://github.com/foliojs/fontkit), so lines wrap where they will in the saved file |
 | Saving | Only the text you change is redrawn; the rest of the file is kept as it was. |
 
 ## Browser support
