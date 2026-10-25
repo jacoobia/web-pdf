@@ -36,7 +36,7 @@ export const PageItem = memo(function PageItem({
   return (
     <div
       data-id={el.id}
-      className={cx("el", kind, selected && "sel")}
+      className={cx("el", kind, selected && "sel", el.link && "linked")}
       style={boxOf(el, scale)}
       title={el.srcFont || undefined}
       onPointerDown={(e) => on.down(e, el)}

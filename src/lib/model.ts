@@ -18,11 +18,12 @@ export type El = Style & {
   bold: boolean;
   italic: boolean;
   deleted?: boolean;
-  orig?: Style & { text: string; x: number; y: number; rect: Rect };
+  orig?: Style & { text: string; x: number; y: number; rect: Rect; link?: string };
   align?: "left" | "center" | "right";
   image?: { w: number; h: number; page: number; index: number };
   wrap?: number;
   lineHeight?: number;
+  link?: string;
 };
 
 export type PageInfo = { w: number; h: number; rotated: boolean };
@@ -204,8 +205,34 @@ export function isDirty(el: El): boolean {
     el.color !== o.color ||
     el.font !== o.font ||
     el.wrap !== undefined ||
-    el.lineHeight !== undefined
+    el.lineHeight !== undefined ||
+    el.align !== undefined
   );
+}
+
+export function normaliseLink(raw?: string) {
+  const s = raw?.trim();
+  if (!s) return undefined;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+  if (/^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(s)) return `mailto:${s}`;
+  return `https://${s}`;
+}
+
+export const linkChanged = (el: El) => normaliseLink(el.link) !== el.orig?.link;
+
+/** Where the text of `el` is drawn, in page points. */
+export function textBounds(el: El, fonts: Map<string, Uint8Array>): Rect {
+  if (!isDirty(el) && el.orig) return el.orig.rect;
+  const w = measure(el.font, fonts);
+  const lines = wrapLines(el.text, el.wrap, (t) => w(t, el.size));
+  const width = Math.max(...lines.map((l) => w(l, el.size)));
+  const lh = el.lineHeight ?? LINE_HEIGHT;
+  return {
+    x: el.x - width * alignShift(el.align),
+    y: el.y,
+    w: width,
+    h: (lines.length - 1) * el.size * lh + el.size,
+  };
 }
 
 export type Removed = { text: Rect[]; images: Rect[] };

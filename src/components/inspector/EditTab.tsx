@@ -1,5 +1,5 @@
 import type { Editor } from "../../lib/editor";
-import { LINE_HEIGHT } from "../../lib/model";
+import { LINE_HEIGHT, normaliseLink } from "../../lib/model";
 import {
   Button,
   ColorInput,
@@ -14,6 +14,7 @@ import {
   Section,
   Select,
   TextArea,
+  TextInput,
 } from "../ui";
 import { FontNote } from "./FontNote";
 
@@ -144,6 +145,17 @@ export function EditTab({ editor }: { editor: Editor }) {
               />
             </Field>
           </>
+        )}
+        {one && !one.image && (
+          <Field label="Link" wide>
+            <TextInput
+              value={one.link ?? ""}
+              placeholder="Web address or email"
+              inputMode="url"
+              onChange={(e) => patch([one.id], { link: e.target.value || undefined }, `link:${one.id}`)}
+              onBlur={(e) => patch([one.id], { link: normaliseLink(e.target.value) }, `link:${one.id}`)}
+            />
+          </Field>
         )}
         {one &&
           (["x", "y"] as const).map((k) => (

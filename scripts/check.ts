@@ -9,6 +9,7 @@ import {
   fontKey,
   headerFooterEls,
   measure,
+  normaliseLink,
   Previewer,
   pickFace,
   removedOn,
@@ -149,6 +150,35 @@ assert.ok(Math.abs(right.x + right.w - (595 - 36)) < 1, `right edge ${right.x + 
 const centre = withHf.find((e) => e.text === "Page 1 of 1")!.orig!.rect;
 assert.ok(Math.abs(centre.x + centre.w / 2 - 595 / 2) < 1, `centre ${centre.x + centre.w / 2}`);
 assert.equal(headerFooterEls({ ...hfCfg, skipFirst: true }, pages).length, 0, "only page is skipped");
+
+// links: typed addresses get a scheme; links follow their text, and removing one removes the annotation
+assert.equal(normaliseLink(" jane@example.com "), "mailto:jane@example.com");
+assert.equal(normaliseLink("example.com/cv"), "https://example.com/cv");
+assert.equal(normaliseLink("https://a.b"), "https://a.b");
+assert.equal(normaliseLink("  "), undefined);
+const linked = extract(src).els;
+linked.find((e) => e.text === "Led a team of four.")!.link = "example.com";
+const withLink = extract((await exportPdf(src, linked, new Map())).pdf);
+const led = withLink.els.find((e) => e.text === "Led a team of four.")!;
+assert.equal(led.link, "https://example.com", "link added to unchanged text");
+const pdfWithLink = (await exportPdf(src, linked, new Map())).pdf;
+const relinked = extract(pdfWithLink).els;
+const mv2 = relinked.find((e) => e.text === "Led a team of four.")!;
+mv2.y += 100;
+const movedOut = extract((await exportPdf(pdfWithLink, relinked, new Map())).pdf).els;
+assert.equal(
+  movedOut.find((e) => e.text === "Led a team of four.")!.link,
+  "https://example.com",
+  "link moves with text",
+);
+assert.equal(movedOut.filter((e) => e.link).length, 1, "old link removed when the text moves");
+const unlinked = extract(pdfWithLink).els;
+unlinked.find((e) => e.text === "Led a team of four.")!.link = undefined;
+const unlinkedPdf = mupdf.Document.openDocument(
+  (await exportPdf(pdfWithLink, unlinked, new Map())).pdf,
+  "application/pdf",
+);
+assert.equal(unlinkedPdf.loadPage(0).getLinks().length, 0, "removed link is gone");
 
 // alignment: wrapped lines centre on x, matching the preview's text-align inside a translated box
 assert.deepEqual([alignShift(), alignShift("center"), alignShift("right")], [0, 0.5, 1]);

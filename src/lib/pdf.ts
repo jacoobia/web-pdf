@@ -11,12 +11,15 @@ import {
   isDirty,
   isItalicName,
   LINE_HEIGHT,
+  linkChanged,
   measure,
+  normaliseLink,
   type PageInfo,
   type Rect,
   type Removed,
   removedOn,
   STANDARD_FONTS,
+  textBounds,
   wrapLines,
 } from "./model";
 
@@ -40,6 +43,18 @@ const hex = (c: mupdf.Color) => {
 };
 
 const STEXT = "preserve-whitespace,preserve-images";
+
+const overlap = (a: Rect, b: Rect) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
+  Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const toRect = ([x0, y0, x1, y1]: mupdf.Rect): Rect => ({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+
+function webLinks(page: mupdf.PDFPage) {
+  return page
+    .getLinks()
+    .filter((l) => l.isExternal())
+    .map((link) => ({ link, uri: link.getURI(), rect: toRect(link.getBounds()) }));
+}
 
 function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Array {
   let n = 0,
@@ -154,8 +169,32 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[] } {
         });
       },
     });
+    const links = webLinks(page);
+    for (const el of els)
+      if (el.page === p && !el.image && el.orig) {
+        const r = el.orig.rect;
+        const hit = links.find((l) => overlap(l.rect, r) > 0.5 * r.w * r.h);
+        if (hit) el.link = el.orig.link = hit.uri;
+      }
   }
   return { pages, els };
+}
+
+function rewriteLinks(doc: mupdf.PDFDocument, els: El[], fonts: Map<string, Uint8Array>) {
+  for (let p = 0; p < doc.countPages(); p++) {
+    const changed = els.filter((e) => e.page === p && !e.image && (isDirty(e) || linkChanged(e)));
+    if (!changed.length) continue;
+    const page = doc.loadPage(p);
+    const links = webLinks(page);
+    for (const el of changed) {
+      const old = el.orig?.link && links.find((l) => l.uri === el.orig!.link && overlap(l.rect, el.orig!.rect) > 0);
+      if (old) page.deleteLink(old.link);
+      const uri = !el.deleted && normaliseLink(el.link);
+      if (!uri) continue;
+      const r = textBounds(el, fonts);
+      page.createLink([r.x, r.y, r.x + r.w, r.y + r.h], uri);
+    }
+  }
 }
 
 function redact(page: mupdf.PDFPage, rects: Rect[], images: boolean) {
@@ -261,6 +300,7 @@ export async function exportPdf(
       if (!pngs.has(key)) pngs.set(key, imagePng(doc, el.image.page, el.image.index));
     }
   for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
+  rewriteLinks(doc, els, fonts);
   const saved = doc.saveToBuffer("garbage=compact,compress");
   const cleaned = saved.asUint8Array().slice();
   saved.destroy();
