@@ -15,9 +15,19 @@ jobs:
       - run: bunx biome ci .
       - run: bun run build
 
-  # The end-to-end checks embed Calibri and Arial from C:/Windows/Fonts.
+  # The PDF checks embed Calibri and Arial from C:/Windows/Fonts.
   test:
     runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+
+  # Browser checks in the runner's Chrome; Playwright needs Node, as it hangs under Bun on Windows.
+  e2e:
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -25,5 +35,4 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
-      - run: bun run test
       - run: bun run test:e2e
