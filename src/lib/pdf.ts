@@ -1,8 +1,7 @@
-import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
-import { PDFDocument, type PDFFont, type PDFImage, rgb } from "pdf-lib";
 import {
   type AtsReport,
+  alignShift,
   type Compression,
   cleanFontName,
   type El,
@@ -62,23 +61,22 @@ function webLinks(page: mupdf.PDFPage) {
     .map((link) => ({ link, uri: link.getURI(), rect: toRect(link.getBounds()) }));
 }
 
-function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Array {
+function imageAt(doc: mupdf.PDFDocument, page: number, index: number): mupdf.Image {
   let n = 0,
-    png: Uint8Array | undefined;
+    found: mupdf.Image | undefined;
   doc
     .loadPage(page)
     .toStructuredText(STEXT)
-    .walk({
-      onImageBlock(_bbox, _transform, image) {
-        if (n++ !== index) return;
-        let pix = image.toPixmap();
-        const c = pix.getColorSpace()?.getNumberOfComponents();
-        if (c !== 1 && c !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
-        png = pix.asPNG();
-      },
-    });
-  if (!png) throw new Error(`Image ${index + 1} on page ${page + 1} is missing.`);
-  return png;
+    .walk({ onImageBlock: (_b, _t, image) => void (n++ === index && (found = image)) });
+  if (!found) throw new Error(`Image ${index + 1} on page ${page + 1} is missing.`);
+  return found;
+}
+
+function imagePng(doc: mupdf.PDFDocument, page: number, index: number): Uint8Array {
+  let pix = imageAt(doc, page, index).toPixmap();
+  const c = pix.getColorSpace()?.getNumberOfComponents();
+  if (c !== 1 && c !== 3) pix = pix.convertToColorSpace(mupdf.ColorSpace.DeviceRGB, true);
+  return pix.asPNG();
 }
 
 type Ch = { c: string; ox: number; oy: number; l: number; r: number; t: number; b: number };
@@ -102,8 +100,7 @@ function readMeta(doc: mupdf.PDFDocument): Meta {
   return meta;
 }
 
-function writeMeta(pdf: Uint8Array, meta: Meta) {
-  const doc = open(pdf);
+function applyMeta(doc: mupdf.PDFDocument, meta: Meta) {
   const trailer = doc.getTrailer();
   let info = trailer.get("Info");
   if (!info.isDictionary()) trailer.put("Info", (info = doc.addObject(doc.newDictionary())));
@@ -114,9 +111,6 @@ function writeMeta(pdf: Uint8Array, meta: Meta) {
     for (const k of HIDDEN_KEYS) info.delete(k);
     trailer.get("Root").delete("Metadata");
   }
-  const out = save(doc, "garbage=compact,compress");
-  doc.destroy();
-  return out;
 }
 
 /** `bytes` with any `blanks` made into real pages, then every page of `other` appended. */
@@ -348,8 +342,7 @@ export type Layout = { pages: PageInfo[]; order: Slot[] };
 const isIdentity = ({ pages, order }: Layout) =>
   order.length === pages.length && order.every((s, i) => s.src === i && s.rotate === 0);
 
-function arrange(pdf: Uint8Array, { order }: Layout) {
-  const doc = open(pdf);
+function applyLayout(doc: mupdf.PDFDocument, { order }: Layout) {
   for (const { src, rotate } of order) {
     if (!rotate) continue;
     const page = doc.findPage(src);
@@ -357,11 +350,6 @@ function arrange(pdf: Uint8Array, { order }: Layout) {
     page.put("Rotate", ((now.isNumber() ? now.asNumber() : 0) + rotate) % 360);
   }
   doc.rearrangePages(order.map((s) => s.src));
-  const buf = doc.saveToBuffer("garbage=compact,compress");
-  const out = buf.asUint8Array().slice();
-  buf.destroy();
-  doc.destroy();
-  return out;
 }
 
 const LEVELS = { balanced: { max: 2000, quality: 80 }, small: { max: 1200, quality: 60 } };
@@ -373,9 +361,11 @@ const save = (doc: mupdf.PDFDocument, options: string) => {
   return out;
 };
 
-export function compress(pdf: Uint8Array, level: Exclude<Compression, "off">) {
+const SAVE = "garbage=compact,compress";
+const SAVE_SMALL = "garbage=compact,compress,compress-fonts,compress-images,objstms";
+
+function squeezeImages(doc: mupdf.PDFDocument, level: Exclude<Compression, "off">) {
   const { max, quality } = LEVELS[level];
-  const doc = open(pdf);
   const isImage = (o: mupdf.PDFObject) => o.isStream() && o.get("Subtype").toString() === "/Image";
   const masks = new Set<number>();
   for (let i = 1; i < doc.countObjects(); i++) {
@@ -416,12 +406,197 @@ export function compress(pdf: Uint8Array, level: Exclude<Compression, "off">) {
       o.delete("Decode");
     } catch {}
   }
+}
+
+const subset = (doc: mupdf.PDFDocument) => {
   try {
     doc.subsetFonts();
   } catch {}
-  const out = save(doc, "garbage=compact,compress,compress-fonts,compress-images,objstms");
+};
+
+export function compress(pdf: Uint8Array, level: Exclude<Compression, "off">) {
+  const doc = open(pdf);
+  squeezeImages(doc, level);
+  subset(doc);
+  const out = save(doc, SAVE_SMALL);
   doc.destroy();
   return out.length < pdf.length ? out : pdf;
+}
+
+type Matrix = [number, number, number, number, number, number];
+const mul = (a: Matrix, b: Matrix): Matrix => [
+  a[0] * b[0] + a[1] * b[2],
+  a[0] * b[1] + a[1] * b[3],
+  a[2] * b[0] + a[3] * b[2],
+  a[2] * b[1] + a[3] * b[3],
+  a[4] * b[0] + a[5] * b[2] + b[4],
+  a[4] * b[1] + a[5] * b[3] + b[5],
+];
+const invert = ([a, b, c, d, e, f]: Matrix): Matrix => {
+  const det = a * d - b * c;
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+};
+const num = (n: number) => +n.toFixed(3);
+const ops = (m: Matrix) => m.map(num).join(" ");
+
+const WIN_ANSI_HIGH = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008DŽ\u008F\u0090‘’“”•–—˜™š›œ\u009DžŸ";
+/** The WinAnsi byte for a character, which is how MuPDF encodes its built-in Latin fonts. */
+const winAnsi = (ch: string) => {
+  const cp = ch.codePointAt(0)!;
+  if (cp < 0x80 || (cp >= 0xa0 && cp <= 0xff)) return cp;
+  const i = WIN_ANSI_HIGH.indexOf(ch);
+  return i < 0 ? undefined : 0x80 + i;
+};
+
+type Embedded = {
+  name: string;
+  ref: mupdf.PDFObject;
+  has: (ch: string) => boolean;
+  encode: (s: string) => string;
+  used?: Map<number, string>;
+};
+
+const hex4 = (n: number) => n.toString(16).toUpperCase().padStart(4, "0");
+const utf16 = (ch: string) => [...Array(ch.length).keys()].map((i) => hex4(ch.charCodeAt(i))).join("");
+
+/** A ToUnicode map from the characters actually drawn, so a space reads back as a space and not a lookalike. */
+function toUnicode(used: Map<number, string>) {
+  const entries = [...used].map(([gid, ch]) => `<${hex4(gid)}> <${utf16(ch)}>`);
+  const blocks: string[] = [];
+  for (let i = 0; i < entries.length; i += 100) {
+    const chunk = entries.slice(i, i + 100);
+    blocks.push(`${chunk.length} beginbfchar\n${chunk.join("\n")}\nendbfchar`);
+  }
+  return [
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+    "/CMapName /Adobe-Identity-UCS def",
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<0000> <FFFF>",
+    "endcodespacerange",
+    ...blocks,
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end",
+  ].join("\n");
+}
+
+/** Draws edited text and images into the pages' own content streams. */
+function drawEdits(
+  doc: mupdf.PDFDocument,
+  els: El[],
+  fonts: Map<string, Uint8Array>,
+  originals: Map<string, mupdf.Image>,
+  added: Map<string, ImageFile>,
+) {
+  const embedded = new Map<string, Embedded>();
+  const embed = (key: string): Embedded => {
+    const known = embedded.get(key);
+    if (known) return known;
+    const file = fonts.get(key);
+    if (!file && !STANDARD_FONTS[key]) throw new Error(`Font "${key}" isn't loaded.`);
+    const name = `WPF${embedded.size}`;
+    const font = file ? new mupdf.Font(key, file) : new mupdf.Font(key);
+    const used = new Map<number, string>();
+    const e: Embedded = file
+      ? {
+          name,
+          ref: doc.addFont(font),
+          used,
+          has: (ch) => font.encodeCharacter(ch.codePointAt(0)!) !== 0,
+          encode: (s) =>
+            [...s]
+              .map((ch) => {
+                const gid = font.encodeCharacter(ch.codePointAt(0)!);
+                if (!used.has(gid)) used.set(gid, ch);
+                return hex4(gid);
+              })
+              .join(""),
+        }
+      : {
+          name,
+          ref: doc.addSimpleFont(font, "Latin"),
+          has: (ch) => winAnsi(ch) !== undefined,
+          encode: (s) => [...s].map((ch) => winAnsi(ch)!.toString(16).padStart(2, "0")).join(""),
+        };
+    embedded.set(key, e);
+    return e;
+  };
+  const images = new Map<string, { name: string; ref: mupdf.PDFObject }>();
+  const imageOf = (img: NonNullable<El["image"]>) => {
+    const key = img.key ?? `${img.page}:${img.index}`;
+    const known = images.get(key);
+    if (known) return known;
+    const file = img.key ? added.get(img.key)?.bytes : undefined;
+    const image = file ? new mupdf.Image(file) : originals.get(key);
+    if (!image) throw new Error("An added image is missing. Add it again.");
+    const entry = { name: `WPI${images.size}`, ref: doc.addImage(image) };
+    images.set(key, entry);
+    return entry;
+  };
+
+  const byPage = new Map<number, El[]>();
+  for (const el of els) if (isDirty(el) && !el.deleted) byPage.set(el.page, [...(byPage.get(el.page) ?? []), el]);
+  const save = doc.addStream("q", {});
+  const restore = doc.addStream("Q", {});
+  for (const [p, list] of byPage) {
+    const page = doc.loadPage(p) as mupdf.PDFPage;
+    const toPdf = invert(page.getTransform() as Matrix);
+    const obj = page.getObject();
+    let res = obj.getInheritable("Resources");
+    if (!res.isDictionary()) obj.put("Resources", (res = doc.newDictionary()));
+    const dict = (key: string) => {
+      let d = res.get(key);
+      if (!d.isDictionary()) res.put(key, (d = doc.newDictionary()));
+      return d;
+    };
+    const out: string[] = [];
+    for (const el of list) {
+      if (el.image) {
+        const img = imageOf(el.image);
+        dict("XObject").put(img.name, img.ref);
+        const m = mul([el.image.w, 0, 0, -el.image.h, el.x, el.y + el.image.h], toPdf);
+        out.push(`q ${ops(m)} cm /${img.name} Do Q`);
+        continue;
+      }
+      const font = embed(el.font);
+      dict("Font").put(font.name, font.ref);
+      const [r, g, b] = [1, 3, 5].map((i) => num(parseInt(el.color.slice(i, i + 2), 16) / 255));
+      const lh = el.lineHeight ?? LINE_HEIGHT;
+      const width = measure(el.font, fonts);
+      wrapLines(el.text, el.wrap, (t) => width(t, el.size)).forEach((raw, i) => {
+        if (!raw.trim()) return;
+        const line = [...raw]
+          .map((ch) => (!font.has(ch) && HYPHEN_CHARS.includes(ch) && font.has("-") ? "-" : ch))
+          .join("");
+        const bad = [...line].find((ch) => !font.has(ch));
+        if (bad)
+          throw new Error(
+            `${el.font} has no "${bad}" (U+${bad.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}), used in "${line}". ` +
+              `Load the original font (or one that has this character) and choose it for this text.`,
+          );
+        const x = el.x - width(line, el.size) * alignShift(el.align);
+        const y = el.y + el.ascent * el.size + i * el.size * lh;
+        out.push(
+          `BT /${font.name} ${num(el.size)} Tf ${r} ${g} ${b} rg ${ops(mul([1, 0, 0, -1, x, y], toPdf))} Tm <${font.encode(line)}> Tj ET`,
+        );
+      });
+    }
+    const contents = obj.get("Contents");
+    const parts = doc.newArray();
+    parts.push(save);
+    if (contents.isArray()) for (let i = 0; i < contents.length; i++) parts.push(contents.get(i));
+    else if (contents.isStream()) parts.push(contents);
+    parts.push(restore);
+    parts.push(doc.addStream(out.join("\n"), {}));
+    obj.put("Contents", parts);
+  }
+  for (const { ref, used } of embedded.values())
+    if (used?.size) ref.put("ToUnicode", doc.addStream(toUnicode(used), {}));
 }
 
 export async function exportPdf(
@@ -436,100 +611,23 @@ export async function exportPdf(
   const doc = open(bytes);
   for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
     doc.insertPage(doc.countPages(), doc.addPage([0, 0, pg.w, pg.h], 0, doc.newDictionary(), ""));
-  const pngs = new Map<string, Uint8Array>();
+  const originals = new Map<string, mupdf.Image>();
   for (const el of els)
     if (el.image && !el.image.key && !el.deleted && isDirty(el)) {
       const key = `${el.image.page}:${el.image.index}`;
-      if (!pngs.has(key)) pngs.set(key, imagePng(doc, el.image.page, el.image.index));
+      if (!originals.has(key)) originals.set(key, imageAt(doc, el.image.page, el.image.index));
     }
   for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
   rewriteLinks(doc, els, fonts);
-  const saved = doc.saveToBuffer("garbage=compact,compress");
-  const cleaned = saved.asUint8Array().slice();
-  saved.destroy();
-
-  const out = await PDFDocument.load(cleaned, { updateMetadata: false });
-  out.registerFontkit(fontkit);
-  const embedded = new Map<string, { font: PDFFont; has: (ch: string) => boolean }>();
-  const embed = async (key: string) => {
-    if (!embedded.has(key)) {
-      const file = fonts.get(key);
-      if (!file && !STANDARD_FONTS[key]) throw new Error(`Font "${key}" isn't loaded.`);
-      const font = await (file ? out.embedFont(file, { subset: true }) : out.embedFont(key));
-      const fk = file && fontkit.create(file);
-      const has = fk
-        ? (ch: string) => fk.hasGlyphForCodePoint(ch.codePointAt(0)!)
-        : (ch: string) => {
-            try {
-              font.encodeText(ch);
-              return true;
-            } catch {
-              return false;
-            }
-          };
-      embedded.set(key, { font, has });
-    }
-    return embedded.get(key)!;
-  };
-
-  const pages = out.getPages();
-  const images = new Map<string, PDFImage>();
-  for (const el of els) {
-    if (!isDirty(el) || el.deleted) continue;
-    const page = pages[el.page];
-    const box = page.getCropBox();
-    if (el.image) {
-      const key = el.image.key ?? `${el.image.page}:${el.image.index}`;
-      const file = el.image.key ? added.get(el.image.key) : undefined;
-      if (el.image.key && !file) throw new Error("An added image is missing. Add it again.");
-      if (!images.has(key))
-        images.set(
-          key,
-          await (file
-            ? file.type === "jpg"
-              ? out.embedJpg(file.bytes)
-              : out.embedPng(file.bytes)
-            : out.embedPng(pngs.get(key)!)),
-        );
-      page.drawImage(images.get(key)!, {
-        x: box.x + el.x,
-        y: box.y + box.height - el.y - el.image.h,
-        width: el.image.w,
-        height: el.image.h,
-      });
-      continue;
-    }
-    const { font, has } = await embed(el.font);
-    const [r, g, b] = [1, 3, 5].map((i) => parseInt(el.color.slice(i, i + 2), 16) / 255);
-    const lh = el.lineHeight ?? LINE_HEIGHT;
-    const width = measure(el.font, fonts);
-    wrapLines(el.text, el.wrap, (t) => width(t, el.size)).forEach((raw, i) => {
-      if (!raw.trim()) return;
-      const line = [...raw].map((ch) => (!has(ch) && HYPHEN_CHARS.includes(ch) && has("-") ? "-" : ch)).join("");
-      const bad = [...line].find((ch) => !has(ch));
-      if (bad)
-        throw new Error(
-          `${el.font} has no "${bad}" (U+${bad.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}), used in "${line}". ` +
-            `Load the original font (or one that has this character) and choose it for this text.`,
-        );
-      const w = el.align && el.align !== "left" ? font.widthOfTextAtSize(line, el.size) : 0;
-      page.drawText(line, {
-        x: box.x + el.x - (el.align === "center" ? w / 2 : w),
-        y: box.y + box.height - el.y - el.ascent * el.size - i * el.size * lh,
-        size: el.size,
-        font,
-        color: rgb(r, g, b),
-      });
-    });
-  }
-  const written = await out.save();
-  const drawn = meta ? writeMeta(written, meta) : written;
-  const squeeze = (pdf: Uint8Array) => (compression === "off" ? pdf : compress(pdf, compression));
-  if (!layout || isIdentity(layout)) {
-    const pdf = squeeze(drawn);
-    return { pdf, problems: verify(pdf, els) };
-  }
-  const pdf = squeeze(arrange(drawn, layout));
+  drawEdits(doc, els, fonts, originals, added);
+  if (meta) applyMeta(doc, meta);
+  const arranged = layout && !isIdentity(layout);
+  if (arranged) applyLayout(doc, layout);
+  if (compression !== "off") squeezeImages(doc, compression);
+  subset(doc);
+  const pdf = save(doc, compression === "off" ? SAVE : SAVE_SMALL);
+  doc.destroy();
+  if (!arranged) return { pdf, problems: verify(pdf, els) };
   const at = new Map(layout.order.map((s, i) => [s.src, i]));
   const shown = els.filter((e) => at.has(e.page)).map((e) => ({ ...e, page: at.get(e.page)! }));
   return { pdf, problems: verify(pdf, shown) };

@@ -365,6 +365,17 @@ assert.ok(
   "two-column layout flagged",
 );
 
+// text drawn by MuPDF reads back with plain spaces and the WinAnsi extras of the built-in fonts
+const spaced = extract(src).els;
+const lead = spaced.find((e) => e.text === "Led a team of four.")!;
+Object.assign(lead, { text: "Led a team of six.", font: key });
+const quotes = { ...centred(), id: "q", text: "Price €5 – “quoted” it’s", align: undefined, wrap: undefined, y: 600 };
+const drawn = (await exportPdf(src, [...spaced, quotes], new Map([[key, calibri]]))).pdf;
+const drawnText = pageText(drawn, 0);
+assert.ok(drawnText.includes("Led a team of six."), "spaces in a loaded font are U+0020");
+assert.ok(!drawnText.includes("\u00a0"), "no non-breaking spaces");
+assert.ok(drawnText.includes("Price €5 – “quoted” it’s"), `WinAnsi extras: ${drawnText}`);
+
 // find and replace: every occurrence, case-insensitive unless asked, replaced from the end
 const findEls = [
   { ...centred(), id: "a", text: "Agent agent AGENT" },
