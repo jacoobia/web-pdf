@@ -275,6 +275,11 @@ export function textBounds(el: El, fonts: Map<string, Uint8Array>): Rect {
   };
 }
 
+export type Compression = "off" | "balanced" | "small";
+
+export const formatBytes = (n: number) =>
+  n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+
 export type Removed = { text: Rect[]; images: Rect[] };
 
 export function removedOn(els: El[], page: number): Removed {

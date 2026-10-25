@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
+import { PDFDocument as LibDoc } from "pdf-lib";
 import {
   alignShift,
+  compress,
   type El,
   exportPdf,
   extract,
@@ -20,7 +22,7 @@ import {
   wrapLines,
 } from "../src/lib/pdf";
 import { confine, snap } from "../src/lib/snap";
-import { CALIBRI, makeLargeSample, makeSample } from "./sample";
+import { CALIBRI, makeLargeSample, makeSample, photo } from "./sample";
 
 const src = await makeSample();
 const { pages, els } = extract(src);
@@ -320,6 +322,24 @@ assert.ok(
   !/from "mupdf"/.test(await Bun.file("src/lib/model.ts").text()),
   "model.ts is loaded by the page, so MuPDF must stay out of it",
 );
+
+// compression: a big photo is downscaled and re-encoded, the text stays, and the file shrinks
+const photoDoc = await LibDoc.create();
+const photoPage = photoDoc.addPage([595, 842]);
+photoPage.drawImage(await photoDoc.embedJpg(photo(2400, 1800, 1)), { x: 40, y: 400, width: 400, height: 300 });
+photoPage.drawText("Photo page", { x: 40, y: 760, size: 14 });
+const photoPdf = await photoDoc.save();
+const small = compress(photoPdf, "small");
+assert.ok(small.length < photoPdf.length / 4, `compressed ${photoPdf.length} -> ${small.length}`);
+const smallDoc = mupdf.Document.openDocument(small, "application/pdf") as mupdf.PDFDocument;
+let widest = 0;
+smallDoc
+  .loadPage(0)
+  .toStructuredText("preserve-images")
+  .walk({ onImageBlock: (_b, _t, im) => void (widest = im.getWidth()) });
+assert.ok(widest > 0 && widest <= 1200, `image downscaled to ${widest}px`);
+assert.match(smallDoc.loadPage(0).toStructuredText("preserve-whitespace").asText(), /Photo page/);
+assert.ok(compress(small, "small").length <= small.length, "compressing twice never grows the file");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

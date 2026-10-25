@@ -1,4 +1,5 @@
 import type { Editor } from "../../lib/editor";
+import { type Compression, formatBytes } from "../../lib/model";
 import {
   Button,
   Checkbox,
@@ -53,6 +54,35 @@ export function PageTab({ editor }: { editor: Editor }) {
             Delete page
           </Button>
         </Row>
+      </Section>
+      <Section title="File size">
+        <Muted>{editor.file && `The original file is ${formatBytes(editor.file.size)}.`}</Muted>
+        <Field label="Images when saving">
+          <Select
+            value={editor.compression}
+            onChange={(e) => editor.setCompression(e.target.value as Compression)}
+            options={[
+              ["off", "Keep as they are"],
+              ["balanced", "Balanced, up to 2000 px"],
+              ["small", "Smallest, up to 1200 px"],
+            ]}
+          />
+        </Field>
+        <Row>
+          <Button onClick={editor.checkSize} disabled={editor.estimate?.busy}>
+            Check saved size
+          </Button>
+          {editor.estimate && (
+            <Muted inline>
+              {editor.estimate.busy
+                ? "Checking…"
+                : editor.estimate.compression === editor.compression
+                  ? `About ${formatBytes(editor.estimate.bytes)}`
+                  : "Check again for this setting"}
+            </Muted>
+          )}
+        </Row>
+        <Muted>Large images are scaled down and saved as JPEG. Text and vector graphics aren't changed.</Muted>
       </Section>
       <Section title="Header & footer">
         {(["header", "footer"] as const).map((row) => (

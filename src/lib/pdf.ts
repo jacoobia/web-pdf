@@ -2,6 +2,7 @@ import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
 import { PDFDocument, type PDFFont, type PDFImage, rgb } from "pdf-lib";
 import {
+  type Compression,
   cleanFontName,
   type El,
   fallbackFont,
@@ -309,11 +310,72 @@ function arrange(pdf: Uint8Array, { order }: Layout) {
   return out;
 }
 
+const LEVELS = { balanced: { max: 2000, quality: 80 }, small: { max: 1200, quality: 60 } };
+
+const save = (doc: mupdf.PDFDocument, options: string) => {
+  const buf = doc.saveToBuffer(options);
+  const out = buf.asUint8Array().slice();
+  buf.destroy();
+  return out;
+};
+
+export function compress(pdf: Uint8Array, level: Exclude<Compression, "off">) {
+  const { max, quality } = LEVELS[level];
+  const doc = open(pdf);
+  const isImage = (o: mupdf.PDFObject) => o.isStream() && o.get("Subtype").toString() === "/Image";
+  const masks = new Set<number>();
+  for (let i = 1; i < doc.countObjects(); i++) {
+    const o = doc.newIndirect(i);
+    if (isImage(o) && o.get("SMask").isIndirect()) masks.add(o.get("SMask").asIndirect());
+  }
+  for (let i = 1; i < doc.countObjects(); i++) {
+    const o = doc.newIndirect(i);
+    if (!isImage(o) || masks.has(i) || o.get("ImageMask").toString() === "true") continue;
+    try {
+      const image = doc.loadImage(o);
+      const [w, h] = [image.getWidth(), image.getHeight()];
+      const k = Math.min(1, max / Math.max(w, h));
+      let pix = image.toPixmap();
+      const gray = pix.getColorSpace()?.getNumberOfComponents() === 1;
+      pix = pix.convertToColorSpace(gray ? mupdf.ColorSpace.DeviceGray : mupdf.ColorSpace.DeviceRGB, false);
+      const [nw, nh] = [Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k))];
+      if (k < 1)
+        pix = pix.warp(
+          [
+            [0, 0],
+            [w, 0],
+            [w, h],
+            [0, h],
+          ],
+          nw,
+          nh,
+        );
+      const jpeg = pix.asJPEG(quality);
+      if (jpeg.length >= o.readRawStream().asUint8Array().length) continue;
+      o.writeRawStream(jpeg);
+      o.put("Filter", doc.newName("DCTDecode"));
+      o.put("Width", nw);
+      o.put("Height", nh);
+      o.put("ColorSpace", doc.newName(gray ? "DeviceGray" : "DeviceRGB"));
+      o.put("BitsPerComponent", 8);
+      o.delete("DecodeParms");
+      o.delete("Decode");
+    } catch {}
+  }
+  try {
+    doc.subsetFonts();
+  } catch {}
+  const out = save(doc, "garbage=compact,compress,compress-fonts,compress-images,objstms");
+  doc.destroy();
+  return out.length < pdf.length ? out : pdf;
+}
+
 export async function exportPdf(
   bytes: Uint8Array,
   els: El[],
   fonts: Map<string, Uint8Array>,
   layout?: Layout,
+  compression: Compression = "off",
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
   for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
@@ -395,8 +457,12 @@ export async function exportPdf(
     });
   }
   const drawn = await out.save();
-  if (!layout || isIdentity(layout)) return { pdf: drawn, problems: verify(drawn, els) };
-  const pdf = arrange(drawn, layout);
+  const squeeze = (pdf: Uint8Array) => (compression === "off" ? pdf : compress(pdf, compression));
+  if (!layout || isIdentity(layout)) {
+    const pdf = squeeze(drawn);
+    return { pdf, problems: verify(pdf, els) };
+  }
+  const pdf = squeeze(arrange(drawn, layout));
   const at = new Map(layout.order.map((s, i) => [s.src, i]));
   const shown = els.filter((e) => at.has(e.page)).map((e) => ({ ...e, page: at.get(e.page)! }));
   return { pdf, problems: verify(pdf, shown) };

@@ -75,7 +75,7 @@ export async function makeLargeSample(): Promise<Uint8Array> {
   return doc.save();
 }
 
-function photo(w: number, h: number, seed: number): Uint8Array {
+export function photo(w: number, h: number, seed: number): Uint8Array {
   const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, w, h], false);
   const px = pix.getPixels();
   for (let i = 0, s = seed; i < px.length; i++) px[i] = (s = (s * 1103515245 + 12345) >>> 0) >>> 24;

@@ -1,10 +1,17 @@
-import type { El, Layout, PageInfo, Removed } from "./pdf";
+import type { Compression, El, Layout, PageInfo, Removed } from "./pdf";
 
 export type WorkerIn =
   | { type: "open"; id: number; bytes: Uint8Array }
   | { type: "render"; page: number; key: string; scale: number; removed: Removed; original?: boolean }
   | { type: "image"; id: number; page: number; index: number }
-  | { type: "export"; id: number; els: El[]; fonts: Map<string, Uint8Array>; layout?: Layout };
+  | {
+      type: "export";
+      id: number;
+      els: El[];
+      fonts: Map<string, Uint8Array>;
+      layout?: Layout;
+      compression?: Compression;
+    };
 
 export type Replies = {
   open: { pages: PageInfo[]; els: El[] };
@@ -40,7 +47,7 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
       const png = preview.imagePng(data.page, data.index);
       return reply(data.id, { png }, [png.buffer as ArrayBuffer]);
     }
-    const { pdf, problems } = await exportPdf(bytes, data.els, data.fonts, data.layout);
+    const { pdf, problems } = await exportPdf(bytes, data.els, data.fonts, data.layout, data.compression);
     reply(data.id, { pdf, problems }, [pdf.buffer as ArrayBuffer]);
   } catch (err) {
     if (data.type === "render")

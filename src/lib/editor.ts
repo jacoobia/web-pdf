@@ -11,6 +11,7 @@ import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalF
 import {
   type Align,
   alignShift,
+  type Compression,
   compact,
   type El,
   familyOf,
@@ -88,7 +89,9 @@ const newText = (fields: Pick<El, "page" | "text" | "x" | "y" | "size" | "color"
 export function useEditor() {
   const { prefs, setPref, resetPrefs, theme, margin } = usePrefs();
   const { recent, remember, forget, load } = useRecent();
-  const [file, setFile] = useState<{ name: string; handle?: FileSystemFileHandle } | null>(null);
+  const [file, setFile] = useState<{ name: string; size: number; handle?: FileSystemFileHandle } | null>(null);
+  const [compression, setCompression] = useState<Compression>("off");
+  const [estimate, setEstimate] = useState<{ bytes: number; compression: Compression; busy?: boolean } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [order, setOrder] = useState<Slot[]>([]);
   const [els, setEls] = useState<El[]>([]);
@@ -327,7 +330,8 @@ export function useEditor() {
       const first = identityOrder(pages);
       orderRef.current = first;
       saved.current = { els: list, hf, order: first };
-      setFile({ name: f.name, handle });
+      setFile({ name: f.name, size: f.size, handle });
+      setEstimate(null);
       remember(f.name, handle, f);
       setPages(pages);
       setOrder(first);
@@ -377,6 +381,25 @@ export function useEditor() {
       });
   };
 
+  const build = (list: El[], o: Slot[]) =>
+    previews.request<"export">({
+      type: "export",
+      els: [...list, ...hfEls],
+      fonts,
+      layout: { pages, order: o },
+      compression,
+    });
+  const checkSize = async () => {
+    setEstimate({ bytes: 0, compression, busy: true });
+    try {
+      const { pdf } = await build(elsRef.current, orderRef.current);
+      setEstimate({ bytes: pdf.length, compression });
+    } catch (err) {
+      setEstimate(null);
+      setReport({ ok: false, lines: [`Couldn't check the size: ${errorText(err)}`] });
+    }
+  };
+
   const save = async () => {
     if (!file) return;
     const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-edited.pdf`;
@@ -395,12 +418,7 @@ export function useEditor() {
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
       const snapshot = { els: elsRef.current, hf, order: orderRef.current };
-      const { pdf, problems } = await previews.request<"export">({
-        type: "export",
-        els: [...snapshot.els, ...hfEls],
-        fonts,
-        layout: { pages, order: snapshot.order },
-      });
+      const { pdf, problems } = await build(snapshot.els, snapshot.order);
       if (target) {
         const out = await target.createWritable();
         await out.write(pdf as BufferSource);
@@ -881,6 +899,10 @@ export function useEditor() {
     forget,
     reopen,
     file,
+    compression,
+    setCompression,
+    estimate,
+    checkSize,
     pages,
     order,
     els,
