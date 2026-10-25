@@ -119,6 +119,21 @@ function writeMeta(pdf: Uint8Array, meta: Meta) {
   return out;
 }
 
+/** `bytes` with any `blanks` made into real pages, then every page of `other` appended. */
+export function mergePdf(bytes: Uint8Array, other: Uint8Array, blanks: PageInfo[]) {
+  const doc = open(bytes);
+  for (const pg of blanks)
+    doc.insertPage(doc.countPages(), doc.addPage([0, 0, pg.w, pg.h], 0, doc.newDictionary(), ""));
+  const first = doc.countPages();
+  const src = open(other);
+  const map = doc.newGraftMap();
+  for (let i = 0; i < src.countPages(); i++) map.graftPage(doc.countPages(), src, i);
+  const out = save(doc, "garbage=compact,compress");
+  src.destroy();
+  doc.destroy();
+  return { pdf: out, first };
+}
+
 export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta: Meta } {
   const doc = open(bytes);
   const pages: PageInfo[] = [];

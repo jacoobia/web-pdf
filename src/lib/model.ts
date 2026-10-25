@@ -308,6 +308,22 @@ export type Meta = Record<(typeof META_FIELDS)[number], string> & { hidden: stri
 
 export type ImageFile = { bytes: Uint8Array; type: "png" | "jpg" };
 
+/** "1-3, 5" as zero-based positions, in the order written, for a document of `count` pages. */
+export function parsePageList(input: string, count: number): number[] | null {
+  const out: number[] = [];
+  for (const part of input
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)) {
+    const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(part);
+    if (!m) return null;
+    const [a, b] = [+m[1], +(m[2] ?? m[1])];
+    if (a < 1 || b < 1 || a > count || b > count) return null;
+    for (let n = a; a <= b ? n <= b : n >= b; n += a <= b ? 1 : -1) if (!out.includes(n - 1)) out.push(n - 1);
+  }
+  return out.length ? out : null;
+}
+
 export type Removed = { text: Rect[]; images: Rect[] };
 
 export function removedOn(els: El[], page: number): Removed {

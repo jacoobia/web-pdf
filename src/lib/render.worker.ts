@@ -14,6 +14,7 @@ export type WorkerIn =
       meta?: Meta;
       images?: Map<string, ImageFile>;
     }
+  | { type: "merge"; id: number; bytes: Uint8Array; blanks: PageInfo[] }
   | {
       type: "ats";
       id: number;
@@ -28,6 +29,7 @@ export type Replies = {
   image: { png: Uint8Array };
   export: { pdf: Uint8Array; problems: string[] };
   ats: AtsReport;
+  merge: { pages: PageInfo[]; els: El[] };
 };
 
 const lib = import("./pdf");
@@ -38,7 +40,7 @@ const reply = (id: number, body: object, transfer: Transferable[] = []) =>
   self.postMessage({ type: "reply", id, ...body }, { transfer });
 
 self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
-  const { Previewer, atsCheck, exportPdf, extract } = await lib;
+  const { Previewer, atsCheck, exportPdf, extract, mergePdf } = await lib;
   try {
     if (data.type === "open") {
       preview?.destroy();
@@ -57,6 +59,14 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
     if (data.type === "image") {
       const png = preview.imagePng(data.page, data.index);
       return reply(data.id, { png }, [png.buffer as ArrayBuffer]);
+    }
+    if (data.type === "merge") {
+      const { pdf, first } = mergePdf(bytes, data.bytes, data.blanks);
+      preview.destroy();
+      bytes = pdf;
+      preview = new Previewer(bytes);
+      const all = extract(bytes);
+      return reply(data.id, { pages: all.pages.slice(first), els: all.els.filter((e) => e.page >= first) });
     }
     if (data.type === "ats")
       return reply(

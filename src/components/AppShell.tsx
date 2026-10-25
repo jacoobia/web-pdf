@@ -31,6 +31,17 @@ export function AppShell({ editor, children }: { editor: Editor; children: React
         onChange={(e) => (editor.openFiles(e.target.files), (e.target.value = ""))}
       />
       <input
+        ref={editor.mergeInput}
+        type="file"
+        accept=".pdf"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) editor.mergeFile(f);
+          e.target.value = "";
+        }}
+      />
+      <input
         ref={editor.imageInput}
         type="file"
         accept="image/*"

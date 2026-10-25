@@ -31,6 +31,7 @@ import {
   META_FIELDS,
   type Meta,
   type PageInfo,
+  parsePageList,
   pickFace,
   replaceMatches,
   type Slot,
@@ -133,6 +134,10 @@ export function useEditor() {
 
   const pdfInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
+  const mergeInput = useRef<HTMLInputElement>(null);
+  const mergeAfter = useRef(0);
+  const docPages = useRef(0);
+  const merged = useRef(false);
   const [added, setAdded] = useState(new Map<string, ImageFile>());
   const addedUrls = useRef(new Map<string, string>());
   const pagesRef = useRef<HTMLElement>(null);
@@ -356,6 +361,8 @@ export function useEditor() {
       const first = identityOrder(pages);
       orderRef.current = first;
       fileMeta.current = found;
+      docPages.current = pages.length;
+      merged.current = false;
       setMeta(found);
       saved.current = { els: list, hf, order: first, meta: found };
       setFile({ name: f.name, size: f.size, handle });
@@ -524,6 +531,42 @@ export function useEditor() {
       setReport({ ok: false, lines: [`Couldn't check the text: ${errorText(err)}`] });
     }
   };
+  const savePages = (list: string) => {
+    const at = parsePageList(list, orderRef.current.length);
+    if (!at) return setReport({ ok: false, lines: [`"${list}" isn't a page list. Try something like 1-2, 4.`] });
+    save(at.map((i) => orderRef.current[i]));
+  };
+  const pickMerge = (after: number) => {
+    mergeAfter.current = after;
+    mergeInput.current?.click();
+  };
+  const mergeFile = async (f: File) => {
+    setReport({ ok: true, busy: true, lines: [`Adding the pages of ${f.name}…`] });
+    try {
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      const r = await previews.request<"merge">({ type: "merge", bytes, blanks: pages.slice(docPages.current) }, [
+        bytes.buffer,
+      ]);
+      const first = pages.length;
+      docPages.current = first + r.pages.length;
+      merged.current = true;
+      if (file) dropDraft(file.name);
+      setPages([...pages, ...r.pages]);
+      record("");
+      const next = [...orderRef.current];
+      next.splice(mergeAfter.current + 1, 0, ...r.pages.map((_, i) => ({ src: first + i, rotate: 0 })));
+      elsRef.current = [...elsRef.current, ...r.els];
+      orderRef.current = next;
+      setEls(elsRef.current);
+      setOrder(next);
+      setReport({
+        ok: true,
+        lines: [`Added ${r.pages.length} ${r.pages.length === 1 ? "page" : "pages"} from ${f.name}.`],
+      });
+    } catch (err) {
+      setReport({ ok: false, lines: [`Couldn't add ${f.name}: ${errorText(err)}`] });
+    }
+  };
   const checkSize = async () => {
     setEstimate({ bytes: 0, compression, busy: true });
     try {
@@ -535,9 +578,9 @@ export function useEditor() {
     }
   };
 
-  const save = async () => {
+  const save = async (only?: Slot[]) => {
     if (!file) return;
-    const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-edited.pdf`;
+    const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-${only ? "pages" : "edited"}.pdf`;
     let target: FileSystemFileHandle | undefined;
     if ("showSaveFilePicker" in window) {
       const pick = (startIn: unknown) => chromium.showSaveFilePicker({ suggestedName, startIn, types: [PDF_TYPE] });
@@ -553,14 +596,16 @@ export function useEditor() {
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
       const snapshot = { els: elsRef.current, hf, order: orderRef.current, meta };
-      const { pdf, problems } = await build(snapshot.els, snapshot.order);
+      const { pdf, problems } = await build(snapshot.els, only ?? snapshot.order);
       if (target) {
         const out = await target.createWritable();
         await out.write(pdf as BufferSource);
         await out.close();
       } else download(pdf, name);
-      saved.current = snapshot;
-      dropDraft(file.name);
+      if (!only) {
+        saved.current = snapshot;
+        dropDraft(file.name);
+      }
       const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
       setReport(
         problems.length
@@ -805,7 +850,7 @@ export function useEditor() {
   useEffect(() => {
     if (!file) return;
     const t = setTimeout(() => {
-      if (pendingDraft.current) return;
+      if (pendingDraft.current || merged.current) return;
       if (!unsaved()) return void dropDraft(file.name);
       const list = elsRef.current.filter(changed);
       const used = new Set([...list.map((e) => e.font), hf.font]);
@@ -1144,6 +1189,10 @@ export function useEditor() {
     band,
     currentPage,
     pdfInput,
+    mergeInput,
+    pickMerge,
+    mergeFile,
+    savePages,
     imageInput,
     insertImage,
     imageSrcOf,
@@ -1185,7 +1234,7 @@ export function useEditor() {
     closePdf,
     openFiles,
     pickPdf,
-    save,
+    save: () => save(),
     swapFonts,
     applyFontToAll,
     findInstalled,

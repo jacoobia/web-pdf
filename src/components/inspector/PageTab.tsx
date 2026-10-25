@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Editor } from "../../lib/editor";
 import { type Compression, formatBytes, META_FIELDS } from "../../lib/model";
 import {
@@ -17,12 +18,14 @@ import {
   TextInput,
   TextLink,
 } from "../ui";
+import "./PageTab.css";
 
 const SLOTS = ["Left", "Centre", "Right"];
 
 export function PageTab({ editor }: { editor: Editor }) {
   const { hf, setHf, margin, order } = editor;
   const at = Math.max(0, editor.positionOf(editor.currentPage));
+  const [split, setSplit] = useState("");
   const move = (to: number) => {
     const { src } = order[at];
     editor.movePage(at, to);
@@ -55,6 +58,22 @@ export function PageTab({ editor }: { editor: Editor }) {
             Delete page
           </Button>
         </Row>
+        <Row>
+          <Button onClick={() => editor.pickMerge(at)}>Add pages from a PDF…</Button>
+        </Row>
+        <Field label="Save some pages as a new PDF">
+          <div className="split-row">
+            <TextInput
+              value={split}
+              placeholder={`For example 1-2, ${order.length}`}
+              onChange={(e) => setSplit(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && split.trim() && editor.savePages(split)}
+            />
+            <Button disabled={!split.trim()} onClick={() => editor.savePages(split)}>
+              Save
+            </Button>
+          </div>
+        </Field>
       </Section>
       <Section title="File size">
         <Muted>{editor.file && `The original file is ${formatBytes(editor.file.size)}.`}</Muted>
