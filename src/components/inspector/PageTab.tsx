@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Editor } from "../../lib/editor";
-import { type Compression, formatBytes, META_FIELDS } from "../../lib/model";
+import { type Compression, formatBytes } from "../../lib/model";
 import {
   Button,
   Checkbox,
@@ -9,7 +9,6 @@ import {
   Grid,
   Group,
   IconButton,
-  List,
   Muted,
   NumberInput,
   Row,
@@ -104,33 +103,6 @@ export function PageTab({ editor }: { editor: Editor }) {
         </Row>
         <Muted>Large images are scaled down and saved as JPEG. Text and vector graphics aren't changed.</Muted>
       </Section>
-      {editor.meta && (
-        <Section title="Document info">
-          <Grid>
-            {META_FIELDS.map((f) => (
-              <Field key={f} label={f[0].toUpperCase() + f.slice(1)} wide={f === "title" || f === "keywords"}>
-                <TextInput
-                  value={editor.meta![f]}
-                  onChange={(e) => editor.setMeta({ ...editor.meta!, [f]: e.target.value })}
-                />
-              </Field>
-            ))}
-          </Grid>
-          {editor.meta.hidden.length ? (
-            <>
-              <Muted>The file also holds details you can't see:</Muted>
-              <List variant="muted" items={editor.meta.hidden} />
-              <Checkbox
-                label="Remove these when saving"
-                checked={editor.meta.strip}
-                onChange={(e) => editor.setMeta({ ...editor.meta!, strip: e.target.checked })}
-              />
-            </>
-          ) : (
-            <Muted>No other hidden details were found in this file.</Muted>
-          )}
-        </Section>
-      )}
       <Section title="ATS check">
         <Muted>See your text the way applicant tracking software reads it, with anything that may trip it up.</Muted>
         <Row>

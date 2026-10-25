@@ -239,7 +239,7 @@ await test("document info shows the file's details and saves edits and stripping
   saved,
 }) => {
   await open(metaPdf);
-  await tab("Page");
+  await tab("Info");
   assert.equal(await page.getByRole("textbox", { name: "Title" }).inputValue(), "Old title");
   assert.equal(await page.getByRole("textbox", { name: "Author" }).inputValue(), "Jane Example");
   const hidden = await page.locator(".panel .list").last().innerText();
@@ -255,21 +255,29 @@ await test("document info shows the file's details and saves edits and stripping
   assert.equal(doc.getMetaData("info:Creator") ?? "", "");
 });
 
-await test("a file with no hidden details says so", async ({ page, open, tab }) => {
+await test("a file with no hidden details says so, and saves as made with Web PDF", async ({
+  page,
+  open,
+  tab,
+  saved,
+}) => {
   await open(plainPdf);
-  await tab("Page");
+  await tab("Info");
   assert.match(await page.locator(".panel").innerText(), /No other hidden details were found/);
   assert.equal(await page.getByRole("checkbox", { name: "Remove these when saving" }).count(), 0);
+  await save({ page } as T);
+  const { bytes } = await saved();
+  assert.equal(mupdf.Document.openDocument(bytes, "application/pdf").getMetaData("info:Producer"), "Web PDF");
 });
 
 await test("document info edits come back with Restore edits", async ({ page, open, tab }) => {
   await open(metaPdf);
-  await tab("Page");
+  await tab("Info");
   await page.getByRole("textbox", { name: "Title" }).fill("Draft title");
   await page.waitForTimeout(1600);
   await open(metaPdf);
   await page.getByRole("button", { name: "Restore edits" }).click();
-  await tab("Page");
+  await tab("Info");
   assert.equal(await page.getByRole("textbox", { name: "Title" }).inputValue(), "Draft title");
 });
 
@@ -497,6 +505,7 @@ await test(
     await touch("touchStart", 100);
     for (const d of [120, 140, 160, 180, 200]) await touch("touchMove", d);
     await touch("touchEnd", 0);
+    await page.evaluate(() => void ((window as unknown as { __renders: number }).__renders = 0));
     await page.waitForTimeout(800);
     const after = await zoom(page);
     assert.ok(Math.abs(after - Math.min(400, start * 2)) <= 2, `zoom ${start}% -> ${after}%`);

@@ -47,7 +47,7 @@ import { type Area, type Box, confine, type Guides, snap } from "./snap";
 
 export type At = { page: number; x: number; y: number };
 export type Report = { ok: boolean; lines: string[]; busy?: boolean; action?: { label: string; onClick: () => void } };
-export type Tab = "edit" | "fonts" | "page";
+export type Tab = "edit" | "fonts" | "page" | "info";
 export type Band = { page: number; l: number; r: number; t: number; b: number };
 export type MenuAt = At & { left: number; top: number };
 

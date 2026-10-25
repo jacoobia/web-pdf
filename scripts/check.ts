@@ -470,8 +470,13 @@ assert.ok(!strippedDoc.getTrailer().get("Root").get("Metadata").isStream(), "XMP
 assert.equal(info(stripped.pdf, "Title"), "Old title", "visible fields kept when stripping");
 assert.match(pageText(stripped.pdf, 0), /Metadata page/);
 const untouched = (await exportPdf(metaPdf, metaEls, new Map())).pdf;
-for (const k of ["Title", "Creator", "Producer", "ModDate"])
-  assert.equal(info(untouched, k), info(metaPdf, k), `${k} unchanged`);
+for (const k of ["Title", "Creator", "ModDate"]) assert.equal(info(untouched, k), info(metaPdf, k), `${k} unchanged`);
+assert.equal(info(untouched, "Producer"), "Web PDF", "saved files are marked as made with Web PDF");
+assert.equal(
+  info((await exportPdf(src, extract(src).els, new Map())).pdf, "Producer"),
+  "Web PDF",
+  "even without an Info dictionary edit",
+);
 
 // added images: PNG and JPEG keys are embedded where placed; a missing key is reported
 const pngPix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 40, 20], false);

@@ -83,6 +83,7 @@ type Ch = { c: string; ox: number; oy: number; l: number; r: number; t: number; 
 type Run = { name: string; size: number; color: string; bold: boolean; italic: boolean; chars: Ch[] };
 
 const INFO_KEY = { title: "Title", author: "Author", subject: "Subject", keywords: "Keywords" } as const;
+export const PRODUCER = "Web PDF";
 const HIDDEN_KEYS = ["Creator", "Producer", "CreationDate", "ModDate"];
 
 function readMeta(doc: mupdf.PDFDocument): Meta {
@@ -111,6 +112,14 @@ function applyMeta(doc: mupdf.PDFDocument, meta: Meta) {
     for (const k of HIDDEN_KEYS) info.delete(k);
     trailer.get("Root").delete("Metadata");
   }
+}
+
+/** Marks the file as made with Web PDF; removing hidden details removes this too. */
+function stamp(doc: mupdf.PDFDocument) {
+  const trailer = doc.getTrailer();
+  let info = trailer.get("Info");
+  if (!info.isDictionary()) trailer.put("Info", (info = doc.addObject(doc.newDictionary())));
+  info.put("Producer", doc.newString(PRODUCER));
 }
 
 /** `bytes` with any `blanks` made into real pages, then every page of `other` appended. */
@@ -621,6 +630,7 @@ export async function exportPdf(
   rewriteLinks(doc, els, fonts);
   drawEdits(doc, els, fonts, originals, added);
   if (meta) applyMeta(doc, meta);
+  if (!meta?.strip) stamp(doc);
   const arranged = layout && !isIdentity(layout);
   if (arranged) applyLayout(doc, layout);
   if (compression !== "off") squeezeImages(doc, compression);

@@ -1,6 +1,7 @@
 import type { Editor, Tab } from "../lib/editor";
 import { EditTab } from "./inspector/EditTab";
 import { FontsTab } from "./inspector/FontsTab";
+import { InfoTab } from "./inspector/InfoTab";
 import { PageTab } from "./inspector/PageTab";
 import { IconButton, Panel, Segmented } from "./ui";
 import "./Inspector.css";
@@ -9,6 +10,7 @@ const TABS = [
   ["edit", "Edit"],
   ["fonts", "Fonts"],
   ["page", "Page"],
+  ["info", "Info"],
 ] as const satisfies readonly (readonly [Tab, string])[];
 
 export function Inspector({ editor }: { editor: Editor }) {
@@ -32,6 +34,7 @@ export function Inspector({ editor }: { editor: Editor }) {
       {tab === "edit" && <EditTab editor={editor} />}
       {tab === "fonts" && <FontsTab editor={editor} />}
       {tab === "page" && <PageTab editor={editor} />}
+      {tab === "info" && <InfoTab editor={editor} />}
     </Panel>
   );
 }
