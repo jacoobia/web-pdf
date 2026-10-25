@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalFont, PDF_TYPE } from "./browser";
+import { applyDraft, changed, type Draft, dropDraft, loadDraft, saveDraft } from "./drafts";
 import {
   type Align,
   type AtsReport,
@@ -38,7 +39,7 @@ import { openedAt, type Recent, useRecent } from "./recent";
 import { type Area, type Box, confine, type Guides, snap } from "./snap";
 
 export type At = { page: number; x: number; y: number };
-export type Report = { ok: boolean; lines: string[]; busy?: boolean };
+export type Report = { ok: boolean; lines: string[]; busy?: boolean; action?: { label: string; onClick: () => void } };
 export type Tab = "edit" | "fonts" | "page";
 export type Band = { page: number; l: number; r: number; t: number; b: number };
 export type MenuAt = At & { left: number; top: number };
@@ -127,6 +128,7 @@ export function useEditor() {
   const elsRef = useRef<El[]>([]);
   const pageArrays = useRef(new Map<number, El[]>());
   type Snap = { els: El[]; order: Slot[] };
+  const pendingDraft = useRef<Draft | null>(null);
   const orderRef = useRef<Slot[]>([]);
   const past = useRef<Snap[]>([]);
   const future = useRef<Snap[]>([]);
@@ -252,6 +254,7 @@ export function useEditor() {
 
   const closePdf = () => {
     if (unsaved() && !confirm("Close this PDF? Edits you haven't saved will be lost.")) return;
+    if (file) dropDraft(file.name);
     clearPreviews();
     past.current = [];
     future.current = [];
@@ -323,6 +326,8 @@ export function useEditor() {
       const bytes = new Uint8Array(await f.arrayBuffer());
       clearPreviews();
       const { pages, els } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
+      const draft = await loadDraft(f.name, f.size);
+      pendingDraft.current = draft ?? null;
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
       past.current = [];
@@ -342,11 +347,33 @@ export function useEditor() {
       const have = [...fonts.keys(), ...Object.keys(STANDARD_FONTS)].map(compact);
       const need = [...new Set(list.map((e) => e.srcFont).filter((s) => s && !have.includes(compact(s))))];
       if (need.length && canReadLocalFonts()) await findInstalled(need, true);
+      if (draft)
+        setReport({
+          ok: true,
+          lines: [
+            `You have unsaved edits to ${f.name} from ${openedAt(draft.savedAt)}.`,
+            "Restore them, or dismiss to start from the file as it is.",
+          ],
+          action: { label: RESTORE, onClick: () => restoreDraft(draft) },
+        });
       return true;
     } catch (err) {
       setReport({ ok: false, lines: [`Couldn't open ${f.name}: ${errorText(err)}`] });
       return false;
     }
+  };
+
+  const restoreDraft = async (draft: Draft) => {
+    for (const [key, bytes] of draft.fonts) if (!fonts.has(key)) await addFont(bytes, key);
+    record("");
+    const next = applyDraft(elsRef.current, draft);
+    elsRef.current = next;
+    orderRef.current = draft.order;
+    setEls(next);
+    setPages(draft.pages);
+    setOrder(draft.order);
+    setHf(draft.hf);
+    setReport({ ok: true, lines: ["Restored your unsaved edits."] });
   };
 
   const openFiles = async (files: FileList | null, handles: (Promise<FileSystemHandle | null> | undefined)[] = []) => {
@@ -442,6 +469,7 @@ export function useEditor() {
         await out.close();
       } else download(pdf, name);
       saved.current = snapshot;
+      dropDraft(file.name);
       const done = target ? `Saved ${name}` : `${name} is ready. Your browser will save it or ask where.`;
       setReport(
         problems.length
@@ -679,8 +707,40 @@ export function useEditor() {
     };
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: everything it reads is in the list or a ref
   useEffect(() => {
-    if (!report?.ok || report.busy) return;
+    if (!file) return;
+    const t = setTimeout(() => {
+      if (pendingDraft.current) return;
+      if (!unsaved()) return void dropDraft(file.name);
+      const list = elsRef.current.filter(changed);
+      const used = new Set([...list.map((e) => e.font), hf.font]);
+      saveDraft(file.name, {
+        size: file.size,
+        savedAt: Date.now(),
+        els: list,
+        pages,
+        order: orderRef.current,
+        hf,
+        fonts: [...fonts].filter(([k]) => used.has(k)),
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [file, els, order, hf, pages, fonts]);
+
+  const RESTORE = "Restore edits";
+  const prompted = useRef(false);
+  useEffect(() => {
+    if (report?.action?.label === RESTORE) prompted.current = true;
+    else if (prompted.current) {
+      prompted.current = false;
+      pendingDraft.current = null;
+      if (!report && file) dropDraft(file.name);
+    }
+  }, [report, file]);
+
+  useEffect(() => {
+    if (!report?.ok || report.busy || report.action) return;
     const t = setTimeout(() => setReport((r) => (r === report ? null : r)), 4000);
     return () => clearTimeout(t);
   }, [report]);

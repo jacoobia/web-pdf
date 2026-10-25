@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { stored, unstore } from "./storage";
 
 export type Recent = { name: string; openedAt: number; handle: boolean; copy?: boolean };
 
@@ -12,26 +13,6 @@ const read = (): Recent[] => {
   } catch {
     return [];
   }
-};
-
-const stored = <T>(name: "handles" | "files", mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>) =>
-  new Promise<T>((resolve, reject) => {
-    const open = indexedDB.open("pdf-editor", 2);
-    open.onupgradeneeded = () => {
-      for (const s of ["handles", "files"])
-        if (!open.result.objectStoreNames.contains(s)) open.result.createObjectStore(s);
-    };
-    open.onerror = () => reject(open.error);
-    open.onsuccess = () => {
-      const req = run(open.result.transaction(name, mode).objectStore(name));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    };
-  });
-
-const unstore = (name: string) => {
-  stored("handles", "readwrite", (s) => s.delete(name)).catch(() => {});
-  stored("files", "readwrite", (s) => s.delete(name)).catch(() => {});
 };
 
 export const openedAt = (t: number) =>

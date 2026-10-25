@@ -40,6 +40,10 @@
 }
 .toast .btn.small {
   margin: -4px 0 -4px 4px;
+  flex: none;
+}
+.toast .btn.small + .btn.small {
+  margin-left: 0;
 }
 @media (max-width: 760px) {
   .toast {

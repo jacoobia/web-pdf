@@ -14,4 +14,4 @@ export { Swatches } from "./Swatches";
 export { Switch } from "./Switch";
 export { Badge, Callout, Dot, Kbd, List, Muted, Pre, Spinner, Tag } from "./Text";
 export { TextLink } from "./TextLink";
-export { Toast } from "./Toast";
+export { Toast, type ToastAction } from "./Toast";

@@ -4,19 +4,23 @@ import { Icon } from "./Icon";
 import { Spinner } from "./Text";
 import "./Toast.css";
 
+export type ToastAction = { label: string; onClick: () => void };
+
 export function Toast({
   ok,
   busy,
   lines,
+  action,
   onDismiss,
 }: {
   ok: boolean;
   busy?: boolean;
   lines: string[];
+  action?: ToastAction;
   onDismiss: () => void;
 }) {
   return (
-    <div className={cx("toast", !busy && (ok ? "ok" : "bad"))} role={ok ? "status" : "alert"}>
+    <div className={cx("toast", !busy && (ok ? "ok" : "bad"))} role={ok ? "status" : "alert"} data-bugdrop-mask>
       {busy ? (
         <Spinner />
       ) : (
@@ -29,6 +33,11 @@ export function Toast({
           <p key={l}>{l}</p>
         ))}
       </div>
+      {action && (
+        <Button variant="primary" size="small" onClick={action.onClick}>
+          {action.label}
+        </Button>
+      )}
       {!busy && (
         <Button variant="ghost" size="small" onClick={onDismiss}>
           Dismiss
