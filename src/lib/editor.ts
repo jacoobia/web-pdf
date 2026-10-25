@@ -172,7 +172,8 @@ export function useEditor() {
   const sourceFonts = useMemo(() => [...new Set(els.map((e) => e.srcFont).filter(Boolean))], [els]);
 
   const canvasStyle = prefs.uiStyle === "canvas";
-  const previews = usePreviews({ open: !!file, pages, order, byPage, scale, thumbs: canvasStyle });
+  const showThumbs = prefs.thumbs === "1";
+  const previews = usePreviews({ open: !!file, pages, order, byPage, scale, thumbs: showThumbs });
 
   const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
   const one = selected.length === 1 ? selected[0] : null;
@@ -1036,6 +1037,7 @@ export function useEditor() {
     installedFamilies,
     rotated: pages.some((p) => p.rotated),
     canvasStyle,
+    showThumbs,
     edited: !!file && unsaved(),
     canUndo: past.current.length > 0,
     canRedo: future.current.length > 0,

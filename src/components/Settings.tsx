@@ -87,7 +87,7 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
         </Setting>
         <Setting
           title="Interface style"
-          description="Toolbar keeps a docked sidebar. Canvas adds page thumbnails and floating panels."
+          description="Toolbar keeps a docked sidebar. Canvas uses a floating panel over the pages."
         >
           <Segmented
             label="Interface style"
@@ -118,6 +118,13 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
         </div>
       </SettingGroup>
       <SettingGroup title="Layout">
+        <Setting title="Page thumbnails" description="A column of small pages for moving around and reordering.">
+          <Switch
+            label="Page thumbnails"
+            checked={prefs.thumbs === "1"}
+            onChange={(v) => set("thumbs", v ? "1" : "0")}
+          />
+        </Setting>
         <Setting title="Panel side" description="Which side the sidebar or floating panel sits on.">
           <Segmented
             label="Panel side"

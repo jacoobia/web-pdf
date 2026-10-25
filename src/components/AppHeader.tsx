@@ -8,6 +8,7 @@ import {
   SettingsButton,
   SourceLink,
   ThemeToggle,
+  ThumbsToggle,
   ZoomTools,
 } from "./EditorTools";
 import { Badge, Dot, Group, Icon, IconButton, Menu } from "./ui";
@@ -63,6 +64,7 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
                 onClick={() => setPref("side", right ? "left" : "right")}
               />
               <PanelToggle editor={editor} className="mobile-only" />
+              <ThumbsToggle editor={editor} />
             </>
           )}
           <ThemeToggle editor={editor} />
@@ -112,6 +114,7 @@ function CanvasHeader({ editor }: { editor: Editor }) {
       )}
       <div className="end">
         <Group label="View" plain>
+          {file && <ThumbsToggle editor={editor} />}
           {file && <PanelToggle editor={editor} />}
           <ThemeToggle editor={editor} />
           <SettingsButton editor={editor} />

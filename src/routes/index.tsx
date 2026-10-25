@@ -15,7 +15,7 @@ export default function EditorRoute() {
   return (
     <AppShell editor={editor}>
       <AppHeader editor={editor} />
-      {canvasStyle && file && <PageRail editor={editor} />}
+      {editor.showThumbs && file && <PageRail editor={editor} />}
       <Workspace>
         <PageCanvas editor={editor} />
         {canvasStyle && file && <Inspector editor={editor} />}

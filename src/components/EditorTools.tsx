@@ -67,6 +67,19 @@ export const FeedbackButton = ({ editor }: { editor: Editor }) => (
   />
 );
 
+export function ThumbsToggle({ editor }: { editor: Editor }) {
+  const on = editor.showThumbs;
+  return (
+    <IconButton
+      className="desktop-only"
+      icon="thumbnails"
+      label={on ? "Hide page thumbnails" : "Show page thumbnails"}
+      active={on}
+      onClick={() => editor.setPref("thumbs", on ? "0" : "1")}
+    />
+  );
+}
+
 export const SettingsButton = ({ editor }: { editor: Editor }) => (
   <IconButton icon="settings" label="Settings" onClick={() => editor.setSettingsOpen(true)} />
 );

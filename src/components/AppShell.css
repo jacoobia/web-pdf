@@ -10,16 +10,16 @@
 
 @media (min-width: 761px) {
   .style-toolbar {
-    grid-template: "bar bar" auto "canvas side" minmax(0, 1fr) / minmax(0, 1fr) 320px;
+    grid-template: "bar bar bar" auto "rail canvas side" minmax(0, 1fr) / auto minmax(0, 1fr) 320px;
   }
   .style-toolbar.side-left {
-    grid-template: "bar bar" auto "side canvas" minmax(0, 1fr) / 320px minmax(0, 1fr);
+    grid-template: "bar bar bar" auto "side rail canvas" minmax(0, 1fr) / 320px auto minmax(0, 1fr);
   }
   .style-toolbar.no-file {
-    grid-template-columns: minmax(0, 1fr) 0;
+    grid-template-columns: 0 minmax(0, 1fr) 0;
   }
   .style-toolbar.no-file.side-left {
-    grid-template-columns: 0 minmax(0, 1fr);
+    grid-template-columns: 0 0 minmax(0, 1fr);
   }
   .style-toolbar .panel {
     grid-area: side;
