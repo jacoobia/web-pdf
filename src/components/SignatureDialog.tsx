@@ -74,6 +74,7 @@ function Signing({ editor }: { editor: Editor }) {
     <Dialog
       title="Add a signature"
       onClose={() => editor.setSigning(null)}
+      sensitive
       bodyClass="signature"
       tabs={
         <Segmented
