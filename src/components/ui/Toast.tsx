@@ -20,7 +20,7 @@ export function Toast({
   onDismiss: () => void;
 }) {
   return (
-    <div className={cx("toast", !busy && (ok ? "ok" : "bad"))} role={ok ? "status" : "alert"} data-bugdrop-mask>
+    <div className={cx("toast", !busy && (ok ? "ok" : "bad"))} role={ok ? "status" : "alert"}>
       {busy ? (
         <Spinner />
       ) : (

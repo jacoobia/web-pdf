@@ -37,6 +37,7 @@ export default function EditorRoute() {
           prefs={editor.prefs}
           set={editor.setPref}
           onReset={editor.resetPrefs}
+          onClear={editor.clearStored}
           onClose={() => editor.setSettingsOpen(false)}
         />
       )}

@@ -77,5 +77,5 @@ export function useRecent() {
     return copy && { file: copy, copy: true as const };
   };
 
-  return { recent, remember, forget, load };
+  return { recent, remember, forget, forgetAll: () => save([]), load };
 }

@@ -254,7 +254,6 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     <>
       <main
         className="pages"
-        data-bugdrop-mask
         ref={pagesRef}
         onScroll={editor.onPagesScroll}
         onPointerDown={() => adding || editor.setSel([])}

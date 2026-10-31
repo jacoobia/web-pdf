@@ -92,6 +92,8 @@ bun run dev
 
 `bun run build` produces a static site in `dist/` that any static host can serve. Serve it over HTTPS, as saving to files and reading installed fonts only work on secure pages.
 
+The page carries its own Content Security Policy, so it can only load and fetch its own files. If your host lets you set headers, also send `Content-Security-Policy: frame-ancestors 'none'` to stop other sites embedding it, as that part only works as a header.
+
 Web PDF is licensed under the AGPL, so a hosted copy has to offer its source code to its users. The app links to this repository; if you host a modified version, point `REPO_URL` in `src/components/EditorTools.tsx` at your fork.
 
 ## Contributing

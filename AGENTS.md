@@ -6,7 +6,9 @@ Rules for AI agents working on Web PDF. They apply on top of [CONTRIBUTING.md](C
 
 Web PDF's promise is that files never leave the browser. Keep all work on the user's machine: no network requests, uploads, analytics, telemetry or third-party scripts. Links that the user clicks are fine.
 
-The one exception is the BugDrop feedback form (`src/lib/feedback.ts`), which loads only when the user clicks Send feedback. Anything that shows the user's document or file names carries `data-bugdrop-mask`, so it's hidden from feedback screenshots.
+A Content Security Policy in `vite.config.ts` enforces this: the page can only load and fetch its own files. If a change trips it, fix the change rather than loosening the policy. The browser checks fail on any violation.
+
+The one exception is the BugDrop feedback form. It loads only when the user clicks Send feedback, inside a sandboxed frame (`public/feedback.html`) that can't see the page, its storage or the open PDF.
 
 ## Dependencies
 

@@ -47,7 +47,9 @@ import {
 import { usePref, usePrefs } from "./prefs";
 import { usePreviews } from "./previews";
 import { openedAt, type Recent, useRecent } from "./recent";
+import { rememberSignature } from "./signature";
 import { type Area, type Box, confine, type Guides, snap } from "./snap";
+import { clearStores } from "./storage";
 
 export type At = { page: number; x: number; y: number };
 export type Report = { ok: boolean; lines: string[]; busy?: boolean; action?: { label: string; onClick: () => void } };
@@ -102,7 +104,7 @@ const newText = (fields: Pick<El, "page" | "text" | "x" | "y" | "size" | "color"
 
 export function useEditor() {
   const { prefs, setPref, resetPrefs, theme, margin } = usePrefs();
-  const { recent, remember, forget, load } = useRecent();
+  const { recent, remember, forget, forgetAll, load } = useRecent();
   const [file, setFile] = useState<{
     name: string;
     size: number;
@@ -1289,10 +1291,17 @@ export function useEditor() {
     [],
   );
 
+  const clearStored = async () => {
+    forgetAll();
+    rememberSignature(null);
+    await clearStores();
+  };
+
   return {
     prefs,
     setPref,
     resetPrefs,
+    clearStored,
     theme,
     margin,
     recent,

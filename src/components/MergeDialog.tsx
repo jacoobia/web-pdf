@@ -16,7 +16,6 @@ export function MergeDialog({ editor }: { editor: Editor }) {
     <Dialog
       title="Merge PDFs"
       onClose={() => set(null)}
-      sensitive
       bodyClass="merge"
       footer={
         <>

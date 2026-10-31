@@ -9,7 +9,6 @@ export function UnsavedDialog({ editor }: { editor: Editor }) {
     <Dialog
       title="Unsaved edits"
       onClose={() => leaving.choose("cancel")}
-      sensitive
       footer={
         <>
           <Button variant="ghost" onClick={() => leaving.choose("cancel")}>

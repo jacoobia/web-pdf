@@ -35,7 +35,7 @@ function RecentFiles({
   onForget: (name: string) => void;
 }) {
   return (
-    <section className="recent" aria-label="Recently opened" data-bugdrop-mask>
+    <section className="recent" aria-label="Recently opened">
       <h2>Recently opened</h2>
       <ul>
         {recent.map((r) => (

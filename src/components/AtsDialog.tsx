@@ -10,7 +10,6 @@ export function AtsDialog({ editor }: { editor: Editor }) {
     <Dialog
       title="ATS check"
       onClose={editor.closeAts}
-      sensitive
       bodyClass="ats"
       footer={
         <Button variant="primary" onClick={editor.closeAts}>

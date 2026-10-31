@@ -18,3 +18,5 @@ export const stored = <T>(name: Store, mode: IDBTransactionMode, run: (s: IDBObj
 export const unstore = (name: string) => {
   for (const s of STORES) stored(s, "readwrite", (o) => o.delete(name)).catch(() => {});
 };
+
+export const clearStores = () => Promise.all(STORES.map((s) => stored(s, "readwrite", (o) => o.clear())));

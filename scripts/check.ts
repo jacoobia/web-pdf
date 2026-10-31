@@ -34,6 +34,22 @@ import { CALIBRI, makeForm, makeLargeSample, makeSample, photo } from "./sample"
 
 const src = await makeSample();
 const { pages, els } = extract(src);
+// Every object and decoded stream in a file, so removed content can't hide in compressed or unused objects.
+const everything = (pdf: Uint8Array) => {
+  const doc = mupdf.Document.openDocument(pdf, "application/pdf") as mupdf.PDFDocument;
+  let all = "";
+  for (let i = 1; i < doc.countObjects(); i++) {
+    const o = doc.newIndirect(i);
+    all += o.resolve().toString();
+    if (o.isStream()) all += Buffer.from(o.readStream().asUint8Array()).toString("latin1");
+  }
+  return all;
+};
+const leaks = (pdf: Uint8Array, t: string) => {
+  const all = everything(pdf);
+  return all.includes(t) || all.toUpperCase().includes(Buffer.from(t, "latin1").toString("hex").toUpperCase());
+};
+const imageCount = (pdf: Uint8Array) => (everything(pdf).match(/\/Subtype\s*\/Image/g) ?? []).length;
 const find = (t: string) =>
   els.find((e) => e.text === t) ?? assert.fail(`no element "${t}" in ${els.map((e) => e.text)}`);
 
@@ -105,7 +121,10 @@ for (const t of [
 ])
   assert.ok(text.includes(t), `missing "${t}" in:\n${text}`);
 for (const t of ["Led a team of four", "Cut costs by half"]) assert.ok(!text.includes(t), `"${t}" should be gone`);
-assert.ok(!Buffer.from(pdf).includes("Cut costs"), "old text gone from raw bytes");
+const retitled = extract(src).els;
+retitled.find((e) => e.text === "Jane Example")!.text = "Someone Else";
+assert.ok(leaks(src, "Jane Example"), "the leak check finds text when it is there");
+assert.ok(!leaks((await exportPdf(src, retitled, new Map())).pdf, "Jane Example"), "edited text gone from the file");
 
 const baseline = (e: El) => e.y + e.ascent * e.size;
 const before = find("Senior Widget Engineer at Acme Ltd");
@@ -257,6 +276,18 @@ const arranged = await exportPdf(big, [...four.els, onBlank], new Map(), layout)
 assert.deepEqual(arranged.problems, []);
 const out3 = mupdf.Document.openDocument(arranged.pdf, "application/pdf") as mupdf.PDFDocument;
 assert.equal(out3.countPages(), 3, "two pages deleted, one blank added");
+const contents = (pdf: Uint8Array, p: number) => {
+  const c = (mupdf.Document.openDocument(pdf, "application/pdf") as mupdf.PDFDocument).findPage(p).get("Contents");
+  const parts = c.isArray() ? Array.from({ length: c.length }, (_, i) => c.get(i)) : [c];
+  return parts.map((s) => Buffer.from(s.readStream().asUint8Array()).toString("latin1")).filter((s) => s.length > 40);
+};
+const kept = everything(arranged.pdf);
+for (const p of [1, 2])
+  assert.ok(!contents(big, p).some((s) => kept.includes(s)), `deleted page ${p + 1} is gone from the file`);
+assert.ok(
+  contents(big, 3).some((s) => kept.includes(s)),
+  "the page check finds a kept page",
+);
 assert.equal(pageText(arranged.pdf, 0), pageText(big, 3), "last page moved to the front");
 assert.equal(out3.findPage(1).get("Rotate").asNumber(), 90, "second page rotated");
 assert.deepEqual(out3.loadPage(2).getBounds().map(Math.round), [0, 0, 300, 400], "blank page has its own size");
@@ -286,6 +317,7 @@ const del = extract(src).els;
 imgs(del)[0].deleted = true;
 const noImg = extract((await exportPdf(src, del, new Map())).pdf).els;
 assert.equal(imgs(noImg).length, 0, "deleted image is gone");
+assert.equal(imageCount((await exportPdf(src, del, new Map())).pdf), 0, "deleted image's data is gone from the file");
 assert.ok(
   noImg.some((e) => e.text === "2019 - 2024"),
   "text under the image survives",

@@ -36,7 +36,6 @@ export function FindBar({ editor }: { editor: Editor }) {
     <search
       className="find-bar"
       aria-label="Find and replace"
-      data-bugdrop-mask
       onKeyDown={(e) => {
         if (e.key === "Escape") e.stopPropagation(), close();
         if (e.key === "Enter" && e.target === input.current) e.preventDefault(), go(e.shiftKey ? at - 1 : at + 1);

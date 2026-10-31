@@ -30,9 +30,7 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
         {file && (
           <>
             <span className="vsep" />
-            <span className="doc-name" data-bugdrop-mask>
-              {file.name}
-            </span>
+            <span className="doc-name">{file.name}</span>
             {editor.edited && <Badge title="Edits not saved yet">Edited</Badge>}
           </>
         )}
@@ -92,7 +90,6 @@ function CanvasHeader({ editor }: { editor: Editor }) {
             <button
               type="button"
               className="file-menu"
-              data-bugdrop-mask
               aria-haspopup="menu"
               aria-expanded={fileMenu}
               onClick={() => setFileMenu(!fileMenu)}

@@ -25,11 +25,13 @@ export function Settings({
   prefs,
   set,
   onReset,
+  onClear,
   onClose,
 }: {
   prefs: Prefs;
   set: SetPref;
   onReset: () => void;
+  onClear: () => Promise<void>;
   onClose: () => void;
 }) {
   const [section, setSection] = useState<Section>("preferences");
@@ -63,12 +65,12 @@ export function Settings({
         </>
       }
     >
-      {section === "about" ? <About /> : <Preferences prefs={prefs} set={set} />}
+      {section === "about" ? <About /> : <Preferences prefs={prefs} set={set} onClear={onClear} />}
     </Dialog>
   );
 }
 
-function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
+function Preferences({ prefs, set, onClear }: { prefs: Prefs; set: SetPref; onClear: () => Promise<void> }) {
   const pt = +prefs.marginPt || 0;
   return (
     <>
@@ -202,7 +204,29 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
           />
         </Setting>
       </SettingGroup>
+      <SettingGroup title="Privacy">
+        <Setting
+          title="Clear stored data"
+          description="Deletes unsaved edits, recently opened files and your saved signature from this browser."
+        >
+          <ClearButton onClear={onClear} />
+        </Setting>
+      </SettingGroup>
     </>
+  );
+}
+
+function ClearButton({ onClear }: { onClear: () => Promise<void> }) {
+  const [step, setStep] = useState<"ask" | "sure" | "done">("ask");
+  if (step === "done") return <span className="muted">Cleared</span>;
+  return (
+    <Button
+      tone={step === "sure" ? "danger" : undefined}
+      onClick={() => (step === "ask" ? setStep("sure") : onClear().then(() => setStep("done")))}
+      onBlur={() => step === "sure" && setStep("ask")}
+    >
+      {step === "sure" ? "Clear everything" : "Clear"}
+    </Button>
   );
 }
 

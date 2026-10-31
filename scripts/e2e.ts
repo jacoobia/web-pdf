@@ -92,6 +92,7 @@ async function test(
 ) {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, ...opts });
   await ctx.addInitScript((p) => {
+    if (window !== top) return;
     if (!sessionStorage.getItem("seeded")) {
       localStorage.clear();
       for (const [k, v] of Object.entries(p)) localStorage.setItem(k, v);
@@ -111,6 +112,7 @@ async function test(
   const page = await ctx.newPage();
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => m.text().includes("Content Security Policy") && errors.push(m.text()));
   page.on("dialog", (d) => d.accept());
   const t: T = {
     page,
@@ -834,6 +836,75 @@ await test("tooltips show the label and shortcut on hover and keyboard focus", a
   await page.keyboard.press("Tab");
   await tip.waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), await tip.innerText());
+});
+
+const WIDGET_STUB = `let open = false;
+window.BugDrop = {
+  open() {
+    open = true;
+    const b = document.createElement("button");
+    b.textContent = "Close feedback";
+    b.onclick = () => (open = false);
+    document.body.append(b);
+  },
+  isOpen: () => open,
+};
+dispatchEvent(new CustomEvent("bugdrop:ready"));`;
+
+await test("feedback runs in a sandboxed frame that can't reach the page or its storage", async ({ page, open }) => {
+  await page.route("https://bugdrop.neonwatty.workers.dev/widget.js", (r) =>
+    r.fulfill({ contentType: "text/javascript", body: WIDGET_STUB }),
+  );
+  await open();
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const frame = page.frameLocator("#feedback-frame");
+  await frame.getByRole("button", { name: "Close feedback" }).waitFor();
+  const reach = await page
+    .frames()
+    .find((f) => f.url().includes("feedback.html"))!
+    .evaluate(() => {
+      const can = (f: () => unknown) => {
+        try {
+          f();
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      return { page: can(() => parent.document.title), storage: can(() => localStorage.length), origin: origin };
+    });
+  assert.deepEqual(reach, { page: false, storage: false, origin: "null" });
+  await frame.getByRole("button", { name: "Close feedback" }).click();
+  await page.locator("#feedback-frame").waitFor({ state: "detached" });
+});
+
+await test("clearing stored data removes recent files, copies, drafts and the saved signature", async ({
+  page,
+  open,
+}) => {
+  await open();
+  await page.evaluate(() => localStorage.setItem("signature", "data:image/png;base64,"));
+  await page.getByRole("button", { name: "Close PDF" }).click();
+  await page.locator(".recent").waitFor();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await page.getByRole("button", { name: "Clear everything" }).click();
+  await page.getByText("Cleared").waitFor();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator(".recent").count(), 0, "recent list gone");
+  const left = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((ok) => {
+      const r = indexedDB.open("pdf-editor", 3);
+      r.onsuccess = () => ok(r.result);
+    });
+    const count = (s: string) =>
+      new Promise<number>((ok) => {
+        const r = db.transaction(s).objectStore(s).count();
+        r.onsuccess = () => ok(r.result);
+      });
+    return { files: await count("files"), drafts: await count("drafts"), signature: localStorage.getItem("signature") };
+  });
+  assert.deepEqual(left, { files: 0, drafts: 0, signature: null });
 });
 
 await browser.close();

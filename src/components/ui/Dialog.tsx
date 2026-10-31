@@ -11,7 +11,6 @@ export function Dialog({
   tabs,
   footer,
   bodyClass,
-  sensitive,
   children,
 }: {
   title: string;
@@ -19,7 +18,6 @@ export function Dialog({
   tabs?: ReactNode;
   footer?: ReactNode;
   bodyClass?: string;
-  sensitive?: boolean;
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -55,9 +53,7 @@ export function Dialog({
           <IconButton icon="close" label={`Close ${title.toLowerCase()}`} onClick={onClose} />
         </div>
         {tabs && <div className="dialog-tabs">{tabs}</div>}
-        <div className={cx("dialog-body", bodyClass)} data-bugdrop-mask={sensitive || undefined}>
-          {children}
-        </div>
+        <div className={cx("dialog-body", bodyClass)}>{children}</div>
         {footer && <div className="dialog-foot">{footer}</div>}
       </div>
     </div>
