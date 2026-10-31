@@ -313,8 +313,28 @@ export function useEditor() {
     clip.current = null;
   };
 
-  const closePdf = () => {
-    if (unsaved() && !confirm("Close this PDF? Edits you haven't saved will be lost.")) return;
+  const [leaving, setLeaving] = useState<{
+    name: string;
+    action: "close" | "open";
+    choose: (c: "save" | "discard" | "cancel") => void;
+  } | null>(null);
+  const confirmLeave = async (action: "close" | "open") => {
+    if (!file || !unsaved()) return true;
+    const choice = await new Promise<"save" | "discard" | "cancel">((choose) =>
+      setLeaving({ name: file.name, action, choose }),
+    );
+    setLeaving(null);
+    if (choice === "cancel") return false;
+    if (choice === "save") {
+      await save();
+      return !unsaved();
+    }
+    dropDraft(file.name);
+    return true;
+  };
+
+  const closePdf = async () => {
+    if (!(await confirmLeave("close"))) return;
     if (file) dropDraft(file.name);
     clearPreviews();
     past.current = [];
@@ -383,6 +403,7 @@ export function useEditor() {
   }
 
   const openPdf = async (f: File, handle?: FileSystemFileHandle, fresh = false) => {
+    if (!(await confirmLeave("open"))) return false;
     try {
       setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
@@ -669,7 +690,8 @@ export function useEditor() {
         { type: "combine", files: all },
         all.map((b) => b.buffer),
       );
-      await openPdf(new File([pdf as BlobPart], "Merged.pdf", { type: "application/pdf" }), undefined, true);
+      if (!(await openPdf(new File([pdf as BlobPart], "Merged.pdf", { type: "application/pdf" }), undefined, true)))
+        setReport(null);
     } catch (err) {
       setReport({ ok: false, lines: [`Couldn't merge: ${errorText(err)}`] });
     }
@@ -1360,6 +1382,7 @@ export function useEditor() {
     patch,
     fields,
     setField,
+    leaving,
     signing,
     setSigning,
     sign,

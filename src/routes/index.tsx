@@ -9,6 +9,7 @@ import { PageCanvas } from "../components/PageCanvas";
 import { PageRail } from "../components/PageRail";
 import { Settings } from "../components/Settings";
 import { SignatureDialog } from "../components/SignatureDialog";
+import { UnsavedDialog } from "../components/UnsavedDialog";
 import { Toast } from "../components/ui";
 import { useEditor } from "../lib/editor";
 
@@ -29,6 +30,7 @@ export default function EditorRoute() {
       <AtsDialog editor={editor} />
       <MergeDialog editor={editor} />
       <SignatureDialog editor={editor} />
+      <UnsavedDialog editor={editor} />
       {report && <Toast {...report} onDismiss={() => editor.setReport(null)} />}
       {editor.settingsOpen && (
         <Settings

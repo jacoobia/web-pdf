@@ -794,6 +794,30 @@ await test("signatures are drawn or typed, fill a signature field, and can be re
   assert.equal(imageCount((await saved()).bytes, 0), 2);
 });
 
+await test("unsaved edits ask before closing or opening another file", async ({ page, open, saved }) => {
+  const edit = async () => {
+    await page.locator('.el[aria-label="Jane Example"]').dblclick();
+    await page.locator(".panel textarea").fill("Leon S. Kennedy");
+  };
+  const dialog = page.getByRole("dialog", { name: "Unsaved edits" });
+  await open();
+  await edit();
+  await page.getByRole("button", { name: "Close PDF" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  assert.equal(await page.locator(".page").count(), 1, "cancel keeps it open");
+  await page.getByRole("button", { name: "Close PDF" }).click();
+  await dialog.getByRole("button", { name: "Save a copy" }).click();
+  assert.match(pdfText((await saved()).bytes, 0), /Leon S\. Kennedy/);
+  await page.waitForSelector(".start");
+  await open();
+  await edit();
+  await dropFiles(page, ".app", [LARGE]);
+  await dialog.getByRole("button", { name: "Don't save" }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".thumb").length === 4);
+  await page.getByRole("button", { name: "Close PDF" }).click();
+  await page.waitForSelector(".start");
+});
+
 await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
   await open();
   const find = page.getByRole("button", { name: "Find and replace" });
