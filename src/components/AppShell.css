@@ -50,6 +50,9 @@
   .style-canvas.panel-open .pages {
     padding-right: 340px;
   }
+  .style-toolbar .zoom-float {
+    display: none;
+  }
   .style-canvas.panel-open.side-left .pages {
     padding-right: 24px;
     padding-left: 340px;

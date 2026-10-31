@@ -5,6 +5,7 @@ import { REPO_URL } from "./EditorTools";
 import {
   Button,
   ButtonLink,
+  ConfirmButton,
   Dialog,
   Icon,
   List,
@@ -210,16 +211,14 @@ const Privacy = ({ prefs, set, onClear }: { prefs: Prefs; set: SetPref; onClear:
 );
 
 function ClearButton({ onClear }: { onClear: () => Promise<void> }) {
-  const [step, setStep] = useState<"ask" | "sure" | "done">("ask");
-  if (step === "done") return <span className="muted">Cleared</span>;
+  const [done, setDone] = useState(false);
+  if (done) return <span className="muted">Cleared</span>;
   return (
-    <Button
-      tone={step === "sure" ? "danger" : undefined}
-      onClick={() => (step === "ask" ? setStep("sure") : onClear().then(() => setStep("done")))}
-      onBlur={() => step === "sure" && setStep("ask")}
-    >
-      {step === "sure" ? "Clear everything" : "Clear"}
-    </Button>
+    <ConfirmButton
+      label="Clear"
+      confirm="Yes, clear everything"
+      onConfirm={() => onClear().then(() => setDone(true))}
+    />
   );
 }
 

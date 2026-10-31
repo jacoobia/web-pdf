@@ -266,7 +266,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
         )}
         {order.flatMap((slot, at) => [pageView(slot, at), bars[at]])}
       </main>
-      {editor.canvasStyle && file && (
+      {file && (
         <div className="zoom-float" role="group" aria-label="Zoom">
           <ZoomTools editor={editor} />
         </div>

@@ -2,7 +2,7 @@ import { type DragEvent, useId, useState } from "react";
 import { cx } from "../lib/cx";
 import type { Editor } from "../lib/editor";
 import { openedAt, type Recent } from "../lib/recent";
-import { Button, Icon, type IconName, Tooltip } from "./ui";
+import { ConfirmButton, Icon, type IconName, Tooltip } from "./ui";
 import "./StartScreen.css";
 
 export function StartScreen({ editor }: { editor: Editor }) {
@@ -94,20 +94,11 @@ function RecentFiles({
   onForget: (name: string) => void;
   onForgetAll: () => void;
 }) {
-  const [sure, setSure] = useState(false);
   return (
     <section className="recent" aria-label="Recently opened">
       <div className="recent-head">
         <h2>Recently opened</h2>
-        <Button
-          size="small"
-          variant="ghost"
-          tone={sure ? "danger" : undefined}
-          onClick={() => (sure ? onForgetAll() : setSure(true))}
-          onBlur={() => setSure(false)}
-        >
-          {sure ? "Clear all" : "Clear list"}
-        </Button>
+        <ConfirmButton label="Clear list" confirm="Yes, clear the list" onConfirm={onForgetAll} />
       </div>
       <ul>
         {recent.map((r) => (

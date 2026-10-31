@@ -799,6 +799,13 @@ await test("signatures are drawn or typed, fill a signature field, and can be re
   await page.getByRole("button", { name: "Add signature" }).click();
   await page.waitForTimeout(400);
   assert.equal(await addedImages(page).count(), 2);
+  await page.getByRole("button", { name: "Add a signature" }).click();
+  await page.getByRole("button", { name: "Forget this signature" }).click();
+  assert.equal(await page.getByRole("tab", { name: "Saved" }).count(), 1, "one click only asks");
+  await page.getByRole("button", { name: "Yes, forget it" }).click();
+  assert.equal(await page.getByRole("tab", { name: "Saved" }).count(), 0, "the second click forgets it");
+  await page.waitForFunction(() => document.activeElement?.textContent === "Draw");
+  await page.keyboard.press("Escape");
   await save({ page } as T);
   assert.equal(imageCount((await saved()).bytes, 0), 2);
 });
@@ -948,6 +955,18 @@ await test("settings are split into tabs, and margin size shows only with the ma
   assert.equal(await page.getByRole("button", { name: "Reset to defaults" }).count(), 0);
 });
 
+for (const uiStyle of ["toolbar", "canvas"])
+  await test(
+    `on a phone, zoom floats at the bottom in ${uiStyle} style`,
+    async ({ page, open }) => {
+      await open();
+      assert.equal(await page.locator(".zoom-float").isVisible(), true);
+      assert.equal(await page.locator('.header [aria-label="Zoom"]').isVisible(), false);
+    },
+    { hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } },
+    { uiStyle },
+  );
+
 await test("the start screen's drop box opens the file picker when clicked", async ({ page }) => {
   await page.goto(url);
   await page.evaluate(() => {
@@ -979,7 +998,7 @@ await test("the start screen's clear list removes every recent file and its stor
   await closePdf(page);
   assert.equal(await page.locator(".recent li").count(), 2);
   await page.getByRole("button", { name: "Clear list" }).click();
-  await page.getByRole("button", { name: "Clear all" }).click();
+  await page.getByRole("button", { name: "Yes, clear the list" }).click();
   await page.locator(".recent").waitFor({ state: "detached" });
   await page.waitForTimeout(200);
   const files = await page.evaluate(
@@ -1006,7 +1025,7 @@ await test("clearing stored data removes recent files, copies, drafts and the sa
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("tab", { name: "Privacy" }).click();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await page.getByRole("button", { name: "Clear everything" }).click();
+  await page.getByRole("button", { name: "Yes, clear everything" }).click();
   await page.getByText("Cleared").waitFor();
   await page.keyboard.press("Escape");
   assert.equal(await page.locator(".recent").count(), 0, "recent list gone");

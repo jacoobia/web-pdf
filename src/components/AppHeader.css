@@ -103,6 +103,9 @@
     overflow-x: auto;
     scrollbar-width: none;
   }
+  .header .tools [aria-label="Zoom"] {
+    display: none;
+  }
   .header .tools [aria-label="History"] {
     order: -1;
   }

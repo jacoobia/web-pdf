@@ -1,7 +1,7 @@
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 import type { Editor } from "../lib/editor";
 import { rememberSignature, SCRIPT_FONT, savedSignature, trimmed, typedSignature } from "../lib/signature";
-import { Button, Checkbox, Dialog, Field, Muted, Segmented, Swatches, TextInput } from "./ui";
+import { Button, Checkbox, ConfirmButton, Dialog, Field, Muted, Segmented, Swatches, TextInput } from "./ui";
 import "./SignatureDialog.css";
 
 const INKS = [
@@ -22,6 +22,7 @@ function Signing({ editor }: { editor: Editor }) {
   const [drawn, setDrawn] = useState(false);
   const [remember, setRemember] = useState(false);
   const pad = useRef<HTMLCanvasElement>(null);
+  const tabs = useRef<HTMLDivElement>(null);
   const last = useRef<{ x: number; y: number } | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the pad is a new canvas each time Draw is shown
@@ -76,13 +77,15 @@ function Signing({ editor }: { editor: Editor }) {
       onClose={() => editor.setSigning(null)}
       bodyClass="signature"
       tabs={
-        <Segmented
-          role="tab"
-          label="How to sign"
-          value={mode}
-          onChange={setMode}
-          options={[...(saved ? [["saved", "Saved"] as const] : []), ["draw", "Draw"], ["type", "Type"]]}
-        />
+        <div ref={tabs}>
+          <Segmented
+            role="tab"
+            label="How to sign"
+            value={mode}
+            onChange={setMode}
+            options={[...(saved ? [["saved", "Saved"] as const] : []), ["draw", "Draw"], ["type", "Type"]]}
+          />
+        </div>
       }
       footer={
         <>
@@ -104,13 +107,19 @@ function Signing({ editor }: { editor: Editor }) {
             <img src={saved} alt="Your saved signature" />
           </div>
           <div>
-            <Button
-              variant="ghost"
-              tone="danger"
-              onClick={() => (rememberSignature(null), setSaved(null), setMode("draw"))}
-            >
-              Forget this signature
-            </Button>
+            <ConfirmButton
+              label="Forget this signature"
+              confirm="Yes, forget it"
+              onConfirm={() => {
+                rememberSignature(null);
+                setSaved(null);
+                setMode("draw");
+                // The button goes with the Saved tab, so keep focus in the dialog for the keyboard.
+                requestAnimationFrame(() =>
+                  tabs.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.focus(),
+                );
+              }}
+            />
           </div>
         </>
       )}
