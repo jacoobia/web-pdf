@@ -15,6 +15,7 @@ export const DEFAULT_PREFS = {
   thumbs: "1",
   snap: "1",
   spelling: "en-GB",
+  editText: "panel",
   marginOn: "0",
   marginPt: "36",
 };
@@ -48,6 +49,7 @@ export function usePrefs() {
     thumbs: usePref("thumbs", DEFAULT_PREFS.thumbs),
     snap: usePref("snap", DEFAULT_PREFS.snap),
     spelling: usePref("spelling", DEFAULT_PREFS.spelling),
+    editText: usePref("editText", DEFAULT_PREFS.editText),
     marginOn: usePref("marginOn", DEFAULT_PREFS.marginOn),
     marginPt: usePref("marginPt", DEFAULT_PREFS.marginPt),
   };

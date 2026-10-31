@@ -245,7 +245,7 @@ await test("replace changes one match; replace all changes every match in one un
 
 await test("find skips deleted pages and Escape closes without clearing the selection", async ({ page, open, tab }) => {
   await open(LARGE);
-  await tab("Page");
+  await tab("Pages");
   await page.getByRole("button", { name: "Delete page" }).click();
   await page.keyboard.press("Control+f");
   await findBar(page).fill("Example Company 0 /");
@@ -264,7 +264,7 @@ await test("document info shows the file's details and saves edits and stripping
   saved,
 }) => {
   await open(metaPdf);
-  await tab("Info");
+  await tab("Document");
   assert.equal(await page.getByRole("textbox", { name: "Title" }).inputValue(), "Old title");
   assert.equal(await page.getByRole("textbox", { name: "Author" }).inputValue(), "Jane Example");
   const hidden = await page.locator(".panel .list").last().innerText();
@@ -287,7 +287,7 @@ await test("a file with no hidden details says so, and saves as made with Web PD
   saved,
 }) => {
   await open(plainPdf);
-  await tab("Info");
+  await tab("Document");
   assert.match(await page.locator(".panel").innerText(), /No other hidden details were found/);
   assert.equal(await page.getByRole("checkbox", { name: "Remove these when saving" }).count(), 0);
   await save({ page } as T);
@@ -297,12 +297,12 @@ await test("a file with no hidden details says so, and saves as made with Web PD
 
 await test("document info edits come back with Restore edits", async ({ page, open, tab }) => {
   await open(metaPdf);
-  await tab("Info");
+  await tab("Document");
   await page.getByRole("textbox", { name: "Title" }).fill("Draft title");
   await page.waitForTimeout(1600);
   await open(metaPdf);
   await page.getByRole("button", { name: "Restore edits" }).click();
-  await tab("Info");
+  await tab("Document");
   assert.equal(await page.getByRole("textbox", { name: "Title" }).inputValue(), "Draft title");
 });
 
@@ -437,7 +437,7 @@ await test("merge adds another PDF's pages where you choose, drawn and undoable"
   toast,
 }) => {
   await open();
-  await tab("Page");
+  await tab("Pages");
   await mergeFrom(page, LARGE);
   assert.equal(await toast(), "Merged 4 pages from large.pdf.");
   assert.equal(await order(page), "0,1,2,3,4");
@@ -485,7 +485,7 @@ await test("merge PDFs joins files in the chosen order into a new document", asy
 
 await test("edits on merged pages save, and come back with Restore edits", async ({ page, open, tab, saved }) => {
   await open();
-  await tab("Page");
+  await tab("Pages");
   await mergeFrom(page, LARGE);
   await page.locator('.page[data-page="1"]').scrollIntoViewIfNeeded();
   await page.waitForTimeout(600);
@@ -510,7 +510,7 @@ await test("save some pages writes just those pages, in order, as a copy", async
   toast,
 }) => {
   await open();
-  await tab("Page");
+  await tab("Pages");
   await mergeFrom(page, LARGE);
   await page.getByPlaceholder(/For example/).fill("3, 1");
   await page.getByRole("button", { name: "Save pages" }).click();
@@ -654,6 +654,49 @@ await test("new PDF starts an empty page that saves as Untitled.pdf", async ({ p
   assert.match(pdfText(bytes, 0), /Leon S\. Kennedy/);
   assert.equal(await page.evaluate(() => localStorage.getItem("recent")), null, "not added to recent files");
 });
+
+await test("pages tab holds page tools; file size and ATS live in the document tab", async ({ page, open, tab }) => {
+  await open();
+  await tab("Pages");
+  const header = page.getByRole("textbox", { name: "Header left" });
+  assert.equal(await header.isVisible(), false, "header & footer starts closed");
+  await page.getByText("Header & footer").click();
+  await header.fill("Leon S. Kennedy");
+  await tab("Document");
+  await page.getByRole("button", { name: "Check saved size" }).waitFor();
+  await page.getByRole("button", { name: "Check how ATS reads it" }).waitFor();
+  await tab("Pages");
+  assert.equal(await header.isVisible(), true, "stays open once it has text");
+});
+
+await test(
+  "with editing on the page, text opens in place and new text boxes start there",
+  async ({ page, open, saved }) => {
+    await open();
+    await page.locator('.el[aria-label="Jane Example"]').dblclick();
+    const inline = page.locator("textarea.inline-text");
+    assert.equal(await inline.evaluate((t) => t === document.activeElement), true, "focused on open");
+    await inline.fill("Leon S. Kennedy");
+    await page.keyboard.press("Escape");
+    await inline.waitFor({ state: "detached" });
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+      "Leon S. Kennedy",
+      "focus returns to the text",
+    );
+    await page.getByRole("button", { name: "Add text" }).click();
+    await page.locator('.page[data-page="0"]').click({ position: { x: 100, y: 700 } });
+    await inline.fill("Raccoon City");
+    await page.locator('.page[data-page="0"]').click({ position: { x: 400, y: 900 } });
+    await inline.waitFor({ state: "detached" });
+    await save({ page } as T);
+    const text = pdfText((await saved()).bytes, 0);
+    assert.match(text, /Leon S\. Kennedy/);
+    assert.match(text, /Raccoon City/);
+  },
+  {},
+  { editText: "page" },
+);
 
 await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
   await open();

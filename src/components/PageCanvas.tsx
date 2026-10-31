@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef } from "
 import type { Editor } from "../lib/editor";
 import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
+import { InlineText } from "./InlineText";
 import { HeaderFooterItem, PageItem } from "./PageItem";
 import { StartScreen } from "./StartScreen";
 import { AddBar, Callout } from "./ui";
@@ -114,6 +115,12 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     return node;
   };
 
+  const editingEl = editor.editing ? editor.elById.get(editor.editing) : undefined;
+  const endEditing = (id: string) => {
+    editor.setEditing(null);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`.el[data-id="${id}"]`)?.focus());
+  };
+
   const selByPage = new Map<number, string>();
   for (const id of sel) {
     const e = editor.elById.get(id);
@@ -138,6 +145,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
       isNear && (selByPage.get(p) ?? "") + (one?.page === p ? one.id : ""),
       fonts,
       previews.imageVersion,
+      editingEl?.page === p && editingEl,
     ];
     const hit = pageViews.current.get(p);
     if (hit?.deps.every((d, i) => d === deps[i])) return hit.node;
@@ -179,7 +187,20 @@ export function PageCanvas({ editor }: { editor: Editor }) {
             (byPage.get(p) ?? [])
               .filter((el) => !el.deleted)
               .sort((a, b) => +!!b.image - +!!a.image)
-              .map(itemView)}
+              .map((el) =>
+                el === editingEl ? (
+                  <InlineText
+                    key={el.id}
+                    el={el}
+                    scale={scale}
+                    fonts={fonts}
+                    onChange={(text) => editor.patch([el.id], { text }, `text:${el.id}`)}
+                    onDone={() => endEditing(el.id)}
+                  />
+                ) : (
+                  itemView(el)
+                ),
+              )}
           {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
         </div>
       </div>

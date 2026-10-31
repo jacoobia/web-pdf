@@ -44,7 +44,7 @@ export function EditTab({ editor }: { editor: Editor }) {
         <TextArea
           ref={editor.textBox}
           key={one.id}
-          autoFocus={!one.orig && !one.text}
+          autoFocus={!one.orig && !one.text && editor.prefs.editText !== "page"}
           value={one.text}
           rows={Math.max(2, one.text.split("\n").length)}
           placeholder="Type your text"

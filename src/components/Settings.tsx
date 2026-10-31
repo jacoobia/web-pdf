@@ -153,6 +153,17 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
             ]}
           />
         </Setting>
+        <Setting title="Edit text" description="Where text opens for typing when you double-click it or press Enter.">
+          <Segmented
+            label="Edit text"
+            value={prefs.editText}
+            onChange={(v) => set("editText", v)}
+            options={[
+              ["page", "On the page"],
+              ["panel", "In the panel"],
+            ]}
+          />
+        </Setting>
         <Setting title="Snap to other text" description="Hold Shift while dragging to move freely.">
           <Switch
             label="Snap to other text"

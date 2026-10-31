@@ -1,6 +1,7 @@
 export { AddBar } from "./AddBar";
 export { Button, ButtonLink, FileButton } from "./Button";
 export { Dialog } from "./Dialog";
+export { Disclosure } from "./Disclosure";
 export { Checkbox, ColorInput, Field, NumberInput, Select, TextArea, TextInput } from "./Field";
 export { Group } from "./Group";
 export { Icon, type IconName } from "./Icon";

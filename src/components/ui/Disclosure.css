@@ -1,0 +1,33 @@
+.disclosure summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -4px;
+  padding: 2px 4px;
+  border-radius: var(--radius);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  list-style: none;
+}
+.disclosure summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure summary:hover {
+  background: var(--surface-2);
+}
+.disclosure summary svg {
+  color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform 120ms;
+}
+.disclosure[open] summary svg {
+  transform: none;
+}
+.disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}

@@ -9,8 +9,8 @@ import "./Inspector.css";
 const TABS = [
   ["edit", "Edit"],
   ["fonts", "Fonts"],
-  ["page", "Page"],
-  ["info", "Info"],
+  ["page", "Pages"],
+  ["info", "Document"],
 ] as const satisfies readonly (readonly [Tab, string])[];
 
 export function Inspector({ editor }: { editor: Editor }) {

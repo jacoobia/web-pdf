@@ -153,6 +153,7 @@ export function useEditor() {
   const pageArrays = useRef(new Map<number, El[]>());
   type Snap = { els: El[]; order: Slot[] };
   const pendingDraft = useRef<Draft | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const orderRef = useRef<Slot[]>([]);
   const past = useRef<Snap[]>([]);
   const future = useRef<Snap[]>([]);
@@ -204,6 +205,9 @@ export function useEditor() {
 
   const selected = sel.map((id) => elById.get(id)).filter((e): e is El => !!e);
   const one = selected.length === 1 ? selected[0] : null;
+  useEffect(() => {
+    if (editing && one?.id !== editing) setEditing(null);
+  }, [editing, one]);
   const selText = selected.filter((e) => !e.image);
   const textIds = selText.map((e) => e.id);
   const shared = <K extends keyof El>(k: K) =>
@@ -1096,6 +1100,7 @@ export function useEditor() {
     setSel([el.id]);
     setAdding(false);
     setTab("edit");
+    if (prefs.editText === "page") setEditing(el.id);
   };
 
   const pointOn = (e: { clientX: number; clientY: number; currentTarget: Element }, page: number): At => {
@@ -1147,7 +1152,10 @@ export function useEditor() {
       down: onElDown,
       move: onElMove,
       up: endDrag,
-      focusText: () => (textBox.current?.focus(), textBox.current?.select()),
+      focusText: () =>
+        prefs.editText === "page" && one && !one.image
+          ? setEditing(one.id)
+          : (textBox.current?.focus(), textBox.current?.select()),
       focus: (el) => sel.includes(el.id) || setSel([el.id]),
       resizeStart: (e) => {
         e.stopPropagation();
@@ -1293,6 +1301,8 @@ export function useEditor() {
     setAlign,
     toggleStyle,
     patch,
+    editing,
+    setEditing,
     undo,
     redo,
     remove,

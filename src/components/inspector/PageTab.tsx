@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { Editor } from "../../lib/editor";
-import { type Compression, formatBytes } from "../../lib/model";
 import {
   Button,
   Checkbox,
   ColorInput,
+  Disclosure,
   Field,
   Grid,
   Group,
@@ -15,7 +15,6 @@ import {
   Section,
   Select,
   TextInput,
-  TextLink,
 } from "../ui";
 import "./PageTab.css";
 
@@ -23,7 +22,8 @@ const SLOTS = ["Left", "Centre", "Right"];
 const PLACES = ["At the start", "Before this page", "After this page", "At the end"];
 
 export function PageTab({ editor }: { editor: Editor }) {
-  const { hf, setHf, margin, order } = editor;
+  const { hf, setHf, order } = editor;
+  const hasHf = [...hf.header, ...hf.footer].some((t) => t.trim());
   const at = Math.max(0, editor.positionOf(editor.currentPage));
   const [split, setSplit] = useState("");
   const [place, setPlace] = useState(PLACES[3]);
@@ -35,10 +35,8 @@ export function PageTab({ editor }: { editor: Editor }) {
   };
   return (
     <>
-      <Section title="Pages">
-        <Muted>
-          Page {at + 1} of {order.length}. Changes apply to the page at the top of the view.
-        </Muted>
+      <Section title={`This page · ${at + 1} of ${order.length}`}>
+        <Muted>The page at the top of the view.</Muted>
         <Row>
           <Group label="Rotate">
             <IconButton icon="rotateLeft" label="Rotate left" onClick={() => editor.rotatePage(at, -90)} />
@@ -53,14 +51,16 @@ export function PageTab({ editor }: { editor: Editor }) {
               onClick={() => move(at + 1)}
             />
           </Group>
-        </Row>
-        <Row>
-          <Button onClick={() => editor.insertBlank(at)}>Add blank page after</Button>
           <Button variant="ghost" tone="danger" disabled={order.length < 2} onClick={() => editor.deletePage(at)}>
             Delete page
           </Button>
         </Row>
-        <Field label="Merge PDFs into this one">
+      </Section>
+      <Section title="Add pages">
+        <Row>
+          <Button onClick={() => editor.insertBlank(at)}>Blank page after this one</Button>
+        </Row>
+        <Field label="Merge a PDF">
           <div className="split-row">
             <Select
               aria-label="Where to add the pages"
@@ -71,56 +71,8 @@ export function PageTab({ editor }: { editor: Editor }) {
             <Button onClick={() => editor.pickMerge(mergeAt)}>Merge…</Button>
           </div>
         </Field>
-        <Field label="Save some pages as a new PDF">
-          <div className="split-row">
-            <TextInput
-              value={split}
-              placeholder={`For example 1-2, ${order.length}`}
-              onChange={(e) => setSplit(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && split.trim() && editor.savePages(split)}
-            />
-            <Button disabled={!split.trim()} onClick={() => editor.savePages(split)}>
-              Save pages
-            </Button>
-          </div>
-        </Field>
       </Section>
-      <Section title="File size">
-        <Muted>{editor.file && `The original file is ${formatBytes(editor.file.size)}.`}</Muted>
-        <Field label="Images when saving">
-          <Select
-            value={editor.compression}
-            onChange={(e) => editor.setCompression(e.target.value as Compression)}
-            options={[
-              ["off", "Keep as they are"],
-              ["balanced", "Balanced, up to 2000 px"],
-              ["small", "Smallest, up to 1200 px"],
-            ]}
-          />
-        </Field>
-        <Row>
-          <Button onClick={editor.checkSize} disabled={editor.estimate?.busy}>
-            Check saved size
-          </Button>
-          {editor.estimate && (
-            <Muted inline>
-              {editor.estimate.busy
-                ? "Checking…"
-                : editor.estimate.compression === editor.compression
-                  ? `About ${formatBytes(editor.estimate.bytes)}`
-                  : "Check again for this setting"}
-            </Muted>
-          )}
-        </Row>
-        <Muted>Large images are scaled down and saved as JPEG. Text and vector graphics aren't changed.</Muted>
-      </Section>
-      <Section title="ATS check">
-        <Muted>See your text the way applicant tracking software reads it, with anything that may trip it up.</Muted>
-        <Row>
-          <Button onClick={editor.checkAts}>Check how ATS reads it</Button>
-        </Row>
-      </Section>
-      <Section title="Header & footer">
+      <Disclosure title="Header & footer" open={hasHf}>
         {(["header", "footer"] as const).map((row) => (
           <Grid key={row} cols={3}>
             {SLOTS.map((slot, i) => (
@@ -169,12 +121,21 @@ export function PageTab({ editor }: { editor: Editor }) {
         <Muted>
           Shown on every page. Use {"{page}"} and {"{pages}"} for page numbers, e.g. Page {"{page}"} of {"{pages}"}.
         </Muted>
-      </Section>
-      <Section title="Margins">
-        <Muted>
-          {margin === null ? "Not enforced." : `Items are kept ${margin} pt from the edge.`}{" "}
-          <TextLink onClick={() => editor.setSettingsOpen(true)}>Change in Settings</TextLink>
-        </Muted>
+      </Disclosure>
+      <Section title="Save some pages">
+        <Field label="Pages to save as a new PDF">
+          <div className="split-row">
+            <TextInput
+              value={split}
+              placeholder={`For example 1-2, ${order.length}`}
+              onChange={(e) => setSplit(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && split.trim() && editor.savePages(split)}
+            />
+            <Button disabled={!split.trim()} onClick={() => editor.savePages(split)}>
+              Save pages
+            </Button>
+          </div>
+        </Field>
       </Section>
     </>
   );
