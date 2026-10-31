@@ -35,12 +35,9 @@ export function AppShell({ editor, children }: { editor: Editor; children: React
         ref={editor.mergeInput}
         type="file"
         accept=".pdf"
+        multiple
         hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) editor.mergeFile(f);
-          e.target.value = "";
-        }}
+        onChange={(e) => (editor.mergeFiles([...(e.target.files ?? [])]), (e.target.value = ""))}
       />
       <input
         ref={editor.imageInput}

@@ -15,6 +15,7 @@ export type WorkerIn =
       images?: Map<string, ImageFile>;
     }
   | { type: "merge"; id: number; bytes: Uint8Array; blanks: PageInfo[] }
+  | { type: "combine"; id: number; files: Uint8Array[] }
   | {
       type: "ats";
       id: number;
@@ -29,7 +30,8 @@ export type Replies = {
   image: { png: Uint8Array };
   export: { pdf: Uint8Array; problems: string[] };
   ats: AtsReport;
-  merge: { pages: PageInfo[]; els: El[] };
+  merge: { pages: PageInfo[]; els: El[]; pdf: Uint8Array };
+  combine: { pdf: Uint8Array };
 };
 
 const lib = import("./pdf");
@@ -40,13 +42,17 @@ const reply = (id: number, body: object, transfer: Transferable[] = []) =>
   self.postMessage({ type: "reply", id, ...body }, { transfer });
 
 self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
-  const { Previewer, atsCheck, exportPdf, extract, mergePdf } = await lib;
+  const { Previewer, atsCheck, combinePdfs, exportPdf, extract, mergePdf } = await lib;
   try {
     if (data.type === "open") {
       preview?.destroy();
       bytes = data.bytes;
       preview = new Previewer(bytes);
       return reply(data.id, extract(bytes));
+    }
+    if (data.type === "combine") {
+      const pdf = combinePdfs(data.files);
+      return reply(data.id, { pdf }, [pdf.buffer as ArrayBuffer]);
     }
     if (!bytes || !preview) throw new Error("No PDF is open.");
     if (data.type === "render") {
@@ -66,7 +72,11 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
       bytes = pdf;
       preview = new Previewer(bytes);
       const all = extract(bytes);
-      return reply(data.id, { pages: all.pages.slice(first), els: all.els.filter((e) => e.page >= first) });
+      return reply(data.id, {
+        pages: all.pages.slice(first),
+        els: all.els.filter((e) => e.page >= first),
+        pdf: pdf.slice(),
+      });
     }
     if (data.type === "ats")
       return reply(

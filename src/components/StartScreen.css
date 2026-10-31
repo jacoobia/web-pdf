@@ -33,8 +33,9 @@
 }
 .start-new {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   padding-inline: 21px;
   color: var(--muted);
 }
@@ -134,6 +135,13 @@
   .start {
     margin-top: 32px;
     gap: 20px;
+  }
+  .start-new {
+    justify-content: center;
+    text-align: center;
+  }
+  .start-new span {
+    flex-basis: 100%;
   }
   .drop {
     flex-direction: column;

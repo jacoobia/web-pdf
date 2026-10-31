@@ -408,18 +408,29 @@ await test("added images come back with Restore edits", async ({ page, open }) =
   assert.equal(await addedImages(page).count(), 1);
 });
 
-const mergeFrom = async (page: Page, file: string, button = "Add pages from a PDF…") => {
+const mergeFrom = async (page: Page, file: string, button = "Merge…") => {
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: button }).click();
   await (await chooser).setFiles(file);
-  await page.waitForFunction(() => /Added \d+ page/.test(document.querySelector(".toast")?.textContent ?? ""), null, {
+  await page.waitForFunction(() => /Merged \d+ page/.test(document.querySelector(".toast")?.textContent ?? ""), null, {
     timeout: 30000,
   });
 };
 const order = (page: Page) =>
   page.locator(".page").evaluateAll((n) => n.map((t) => (t as HTMLElement).dataset.page).join(","));
 
-await test("pages from another PDF are added after the current page, drawn, and undoable", async ({
+const dropFiles = (page: Page, selector: string, files: string[]) =>
+  page.locator(selector).evaluate(
+    (el, list) => {
+      const dt = new DataTransfer();
+      for (const f of list) dt.items.add(new File([new Uint8Array(f.data)], f.name, { type: "application/pdf" }));
+      for (const type of ["dragover", "drop"])
+        el.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
+    },
+    files.map((f) => ({ name: f.split("/").pop()!, data: Array.from(readFileSync(f)) })),
+  );
+
+await test("merge adds another PDF's pages where you choose, drawn and undoable", async ({
   page,
   open,
   tab,
@@ -428,7 +439,7 @@ await test("pages from another PDF are added after the current page, drawn, and 
   await open();
   await tab("Page");
   await mergeFrom(page, LARGE);
-  assert.equal(await toast(), "Added 4 pages from large.pdf.");
+  assert.equal(await toast(), "Merged 4 pages from large.pdf.");
   assert.equal(await order(page), "0,1,2,3,4");
   assert.equal(await page.locator(".thumb").count(), 5);
   await page.locator('.page[data-page="1"]').scrollIntoViewIfNeeded();
@@ -436,9 +447,43 @@ await test("pages from another PDF are added after the current page, drawn, and 
   assert.ok((await page.locator('.page[data-page="1"] .el').count()) > 10, "merged page has items");
   await page.keyboard.press("Control+z");
   assert.equal(await order(page), "0");
+  await page.getByRole("combobox", { name: "Where to add the pages" }).selectOption("At the start");
+  await mergeFrom(page, LARGE);
+  assert.equal(await order(page), "5,6,7,8,0");
 });
 
-await test("edits on merged pages save, and autosave stays off after a merge", async ({ page, open, tab, saved }) => {
+await test("dropping a PDF on the page list merges it at that spot", async ({ page, open, toast }) => {
+  await open();
+  await dropFiles(page, '.thumb[data-page="0"]', [LARGE]);
+  await page.waitForFunction(() => /Merged/.test(document.querySelector(".toast")?.textContent ?? ""));
+  assert.equal(await toast(), "Merged 4 pages from large.pdf.");
+  assert.equal(await order(page), "1,2,3,4,0");
+});
+
+await test("merge PDFs joins files in the chosen order into a new document", async ({ page, saved }) => {
+  await page.goto(url);
+  await dropFiles(page, ".app", [SAMPLE, LARGE]);
+  const rows = page.locator(".merge-list li");
+  assert.equal(await rows.count(), 2, "dropping two PDFs opens the merge list");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Merge PDFs" }).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByText("Add PDFs…").click();
+  await (await chooser).setFiles([SAMPLE, LARGE]);
+  await page.getByRole("button", { name: "Move large.pdf up" }).click();
+  assert.deepEqual(await page.locator(".merge-name").allInnerTexts(), ["large.pdf", "sample.pdf"]);
+  await page.getByRole("button", { name: "Merge", exact: true }).click();
+  await page.waitForSelector('.page canvas[width]:not([width="0"])', { state: "attached" });
+  assert.equal(await page.locator(".thumb").count(), 5);
+  await save({ page } as T);
+  const { bytes, name } = await saved();
+  assert.equal(name, "Merged.pdf");
+  assert.equal(pageCount(bytes), 5);
+  assert.equal(pdfText(bytes, 0), pdfText(readFileSync(LARGE), 0), "large.pdf first");
+  assert.match(pdfText(bytes, 4), /Jane Example/);
+});
+
+await test("edits on merged pages save, and come back with Restore edits", async ({ page, open, tab, saved }) => {
   await open();
   await tab("Page");
   await mergeFrom(page, LARGE);
@@ -447,17 +492,10 @@ await test("edits on merged pages save, and autosave stays off after a merge", a
   await page.locator('.page[data-page="1"] .el[aria-label="Jane Example"]').dblclick();
   await page.locator(".panel textarea").fill("Leon S. Kennedy");
   await page.waitForTimeout(1600);
-  const draft = await page.evaluate(
-    () =>
-      new Promise((resolve) => {
-        const req = indexedDB.open("pdf-editor", 3);
-        req.onsuccess = () => {
-          const get = req.result.transaction("drafts").objectStore("drafts").get("sample.pdf");
-          get.onsuccess = () => resolve(get.result ?? null);
-        };
-      }),
-  );
-  assert.equal(draft, null, "no draft after a merge");
+  await open();
+  await page.getByRole("button", { name: "Restore edits" }).click();
+  await page.waitForTimeout(600);
+  assert.equal(await page.locator(".thumb").count(), 5, "merged pages restored");
   await save({ page } as T);
   const { bytes } = await saved();
   assert.equal(pageCount(bytes), 5);

@@ -20,11 +20,14 @@ import {
 import "./PageTab.css";
 
 const SLOTS = ["Left", "Centre", "Right"];
+const PLACES = ["At the start", "Before this page", "After this page", "At the end"];
 
 export function PageTab({ editor }: { editor: Editor }) {
   const { hf, setHf, margin, order } = editor;
   const at = Math.max(0, editor.positionOf(editor.currentPage));
   const [split, setSplit] = useState("");
+  const [place, setPlace] = useState(PLACES[3]);
+  const mergeAt = [0, at, at + 1, order.length][PLACES.indexOf(place)];
   const move = (to: number) => {
     const { src } = order[at];
     editor.movePage(at, to);
@@ -57,9 +60,17 @@ export function PageTab({ editor }: { editor: Editor }) {
             Delete page
           </Button>
         </Row>
-        <Row>
-          <Button onClick={() => editor.pickMerge(at)}>Add pages from a PDF…</Button>
-        </Row>
+        <Field label="Merge PDFs into this one">
+          <div className="split-row">
+            <Select
+              aria-label="Where to add the pages"
+              value={place}
+              options={PLACES}
+              onChange={(e) => setPlace(e.target.value)}
+            />
+            <Button onClick={() => editor.pickMerge(mergeAt)}>Merge…</Button>
+          </div>
+        </Field>
         <Field label="Save some pages as a new PDF">
           <div className="split-row">
             <TextInput

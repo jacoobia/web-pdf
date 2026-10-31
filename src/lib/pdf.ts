@@ -137,6 +137,10 @@ export function mergePdf(bytes: Uint8Array, other: Uint8Array, blanks: PageInfo[
   return { pdf: out, first };
 }
 
+/** `files` merged into one PDF, in order. */
+export const combinePdfs = (files: Uint8Array[]) =>
+  files.slice(1).reduce((all, f) => mergePdf(all, f, []).pdf, files[0]);
+
 export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta: Meta } {
   const doc = open(bytes);
   const pages: PageInfo[] = [];

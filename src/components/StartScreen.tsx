@@ -17,8 +17,9 @@ export const StartScreen = ({ editor }: { editor: Editor }) => (
       </Button>
     </div>
     <div className="start-new">
-      <span>Or start from an empty page.</span>
+      <span>Or start from an empty page, or join several PDFs into one.</span>
       <Button onClick={editor.newPdf}>New PDF</Button>
+      <Button onClick={() => editor.setMergeList([])}>Merge PDFs</Button>
     </div>
     {editor.recent.length > 0 && <RecentFiles recent={editor.recent} onOpen={editor.reopen} onForget={editor.forget} />}
   </div>

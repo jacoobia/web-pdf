@@ -20,6 +20,7 @@ export type Draft = {
   fonts: [string, Uint8Array][];
   meta?: Meta | null;
   images?: [string, ImageFile][];
+  base?: Uint8Array;
 };
 
 export const changed = (e: El) => !e.orig || isDirty(e) || linkChanged(e);

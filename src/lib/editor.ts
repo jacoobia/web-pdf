@@ -141,9 +141,10 @@ export function useEditor() {
   const pdfInput = useRef<HTMLInputElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const mergeInput = useRef<HTMLInputElement>(null);
-  const mergeAfter = useRef(0);
+  const mergeAt = useRef(0);
   const docPages = useRef(0);
-  const merged = useRef(false);
+  const base = useRef<Uint8Array | null>(null);
+  const [mergeList, setMergeList] = useState<File[] | null>(null);
   const [added, setAdded] = useState(new Map<string, ImageFile>());
   const addedUrls = useRef(new Map<string, string>());
   const pagesRef = useRef<HTMLElement>(null);
@@ -368,7 +369,7 @@ export function useEditor() {
       orderRef.current = first;
       fileMeta.current = found;
       docPages.current = pages.length;
-      merged.current = false;
+      base.current = null;
       setMeta(found);
       saved.current = { els: list, hf, order: first, meta: found };
       setFile({ name: f.name, size: f.size, handle, fresh });
@@ -399,6 +400,15 @@ export function useEditor() {
   };
 
   const restoreDraft = async (draft: Draft) => {
+    if (draft.base) {
+      clearPreviews();
+      const r = await previews.request<"open">({ type: "open", bytes: draft.base.slice() });
+      base.current = draft.base;
+      docPages.current = r.pages.length;
+      let list = r.els;
+      for (const key of fonts.keys()) list = fontForSource(list, key, key);
+      elsRef.current = list;
+    }
     for (const [key, bytes] of draft.fonts) if (!fonts.has(key)) await addFont(bytes, key);
     record("");
     const next = applyDraft(elsRef.current, draft);
@@ -472,7 +482,11 @@ export function useEditor() {
     img.key ? addedUrls.current.get(img.key) : previews.imageUrl(img);
 
   const openFiles = async (files: FileList | null, handles: (Promise<FileSystemHandle | null> | undefined)[] = []) => {
-    for (const [i, f] of [...(files ?? [])].entries()) {
+    const list = [...(files ?? [])];
+    const pdfs = list.filter((f) => /\.pdf$/i.test(f.name));
+    if (pdfs.length > 1) setMergeList(pdfs);
+    for (const [i, f] of list.entries()) {
+      if (pdfs.length > 1 && pdfs.includes(f)) continue;
       if (/\.pdf$/i.test(f.name))
         await openPdf(f, ((await handles[i]?.catch(() => null)) as FileSystemFileHandle | null) ?? undefined);
       else if (/\.(ttf|otf)$/i.test(f.name)) await addFont(new Uint8Array(await f.arrayBuffer()), f.name);
@@ -544,35 +558,65 @@ export function useEditor() {
     if (!at) return setReport({ ok: false, lines: [`"${list}" isn't a page list. Try something like 1-2, 4.`] });
     save(at.map((i) => orderRef.current[i]));
   };
-  const pickMerge = (after: number) => {
-    mergeAfter.current = after;
+  const pickMerge = (at: number) => {
+    mergeAt.current = at;
     mergeInput.current?.click();
   };
-  const mergeFile = async (f: File) => {
-    setReport({ ok: true, busy: true, lines: [`Adding the pages of ${f.name}…`] });
-    try {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      const r = await previews.request<"merge">({ type: "merge", bytes, blanks: pages.slice(docPages.current) }, [
-        bytes.buffer,
-      ]);
-      const first = pages.length;
-      docPages.current = first + r.pages.length;
-      merged.current = true;
-      if (file) dropDraft(file.name);
-      setPages([...pages, ...r.pages]);
+  const mergeFiles = async (files: File[], at = mergeAt.current) => {
+    let ps = pages;
+    let o = orderRef.current;
+    let list = elsRef.current;
+    let count = 0;
+    let failed = "";
+    for (const f of files) {
+      setReport({ ok: true, busy: true, lines: [`Merging ${f.name}…`] });
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const r = await previews.request<"merge">({ type: "merge", bytes, blanks: ps.slice(docPages.current) }, [
+          bytes.buffer,
+        ]);
+        base.current = r.pdf;
+        const first = ps.length;
+        docPages.current = first + r.pages.length;
+        ps = [...ps, ...r.pages];
+        o = [...o.slice(0, at), ...r.pages.map((_, i) => ({ src: first + i, rotate: 0 })), ...o.slice(at)];
+        at += r.pages.length;
+        list = [...list, ...r.els];
+        count += r.pages.length;
+      } catch (err) {
+        failed = `Couldn't merge ${f.name}: ${errorText(err)}`;
+        break;
+      }
+    }
+    if (count) {
       record("");
-      const next = [...orderRef.current];
-      next.splice(mergeAfter.current + 1, 0, ...r.pages.map((_, i) => ({ src: first + i, rotate: 0 })));
-      elsRef.current = [...elsRef.current, ...r.els];
-      orderRef.current = next;
-      setEls(elsRef.current);
-      setOrder(next);
-      setReport({
-        ok: true,
-        lines: [`Added ${r.pages.length} ${r.pages.length === 1 ? "page" : "pages"} from ${f.name}.`],
-      });
+      elsRef.current = list;
+      orderRef.current = o;
+      setPages(ps);
+      setEls(list);
+      setOrder(o);
+    }
+    setReport(
+      failed
+        ? { ok: false, lines: [failed] }
+        : {
+            ok: true,
+            lines: [`Merged ${count} ${count === 1 ? "page" : "pages"} from ${files.map((f) => f.name).join(", ")}.`],
+          },
+    );
+  };
+  const combine = async (files: File[]) => {
+    setMergeList(null);
+    setReport({ ok: true, busy: true, lines: [`Merging ${files.length} PDFs…`] });
+    try {
+      const all = await Promise.all(files.map(async (f) => new Uint8Array(await f.arrayBuffer())));
+      const { pdf } = await previews.request<"combine">(
+        { type: "combine", files: all },
+        all.map((b) => b.buffer),
+      );
+      await openPdf(new File([pdf as BlobPart], "Merged.pdf", { type: "application/pdf" }), undefined, true);
     } catch (err) {
-      setReport({ ok: false, lines: [`Couldn't add ${f.name}: ${errorText(err)}`] });
+      setReport({ ok: false, lines: [`Couldn't merge: ${errorText(err)}`] });
     }
   };
   const checkSize = async () => {
@@ -859,7 +903,7 @@ export function useEditor() {
   useEffect(() => {
     if (!file) return;
     const t = setTimeout(() => {
-      if (pendingDraft.current || merged.current) return;
+      if (pendingDraft.current) return;
       if (!unsaved()) return void dropDraft(file.name);
       const list = elsRef.current.filter(changed);
       const used = new Set([...list.map((e) => e.font), hf.font]);
@@ -873,6 +917,7 @@ export function useEditor() {
         meta,
         fonts: [...fonts].filter(([k]) => used.has(k)),
         images: [...usedImages(list)],
+        base: base.current ?? undefined,
       });
     }, 1000);
     return () => clearTimeout(t);
@@ -1208,7 +1253,10 @@ export function useEditor() {
     pdfInput,
     mergeInput,
     pickMerge,
-    mergeFile,
+    mergeFiles,
+    combine,
+    mergeList,
+    setMergeList,
     savePages,
     imageInput,
     insertImage,

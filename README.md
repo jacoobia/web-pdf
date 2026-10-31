@@ -37,7 +37,8 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Add and edit links on text, such as an email address or a portfolio.
 - Move, copy and delete text and images, with snapping to nearby text.
 - Add images such as a photo or signature, and resize any image on the page.
-- Reorder, rotate, delete and add blank pages, add the pages of another PDF, or save some pages on their own.
+- Merge PDFs: join several files into a new one in the order you choose, or merge a PDF into the one you have open at the start, the end or around the current page. Dropping a PDF on the page list merges it at that spot.
+- Reorder, rotate, delete and add blank pages, or save some pages on their own.
 - Add headers and footers with page numbers.
 - Shrink large images when saving to fit upload limits.
 - Edit the title, author, subject and keywords in the Info tab, and remove hidden details such as the app that made the file. Saved copies are marked as made with Web PDF unless you remove the hidden details.

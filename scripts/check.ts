@@ -5,6 +5,7 @@ import { blankPdf } from "../src/lib/model";
 import {
   alignShift,
   atsCheck,
+  combinePdfs,
   compress,
   type El,
   exportPdf,
@@ -428,6 +429,11 @@ assert.deepEqual(
   idsBefore,
   "ids for the original pages are unchanged",
 );
+const combined = combinePdfs([big, src, big]);
+assert.equal(mupdf.Document.openDocument(combined, "application/pdf").countPages(), 9);
+assert.equal(pageText(combined, 0), pageText(big, 0), "files join in the order given");
+assert.equal(pageText(combined, 4), pageText(src, 0));
+assert.equal(pageText(combined, 8), pageText(big, 3));
 
 // document info: read the four fields and the hidden details, write changes, strip on request
 const metaDoc = await LibDoc.create();

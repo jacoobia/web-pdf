@@ -4,6 +4,7 @@ import { AtsDialog } from "../components/AtsDialog";
 import { ContextMenu } from "../components/ContextMenu";
 import { FindBar } from "../components/FindBar";
 import { Inspector } from "../components/Inspector";
+import { MergeDialog } from "../components/MergeDialog";
 import { PageCanvas } from "../components/PageCanvas";
 import { PageRail } from "../components/PageRail";
 import { Settings } from "../components/Settings";
@@ -25,6 +26,7 @@ export default function EditorRoute() {
       {!canvasStyle && file && <Inspector editor={editor} />}
       <ContextMenu editor={editor} />
       <AtsDialog editor={editor} />
+      <MergeDialog editor={editor} />
       {report && <Toast {...report} onDismiss={() => editor.setReport(null)} />}
       {editor.settingsOpen && (
         <Settings
