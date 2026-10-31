@@ -940,16 +940,16 @@ export function useEditor() {
         if (!isTyping(e.target)) e.preventDefault(), key === "y" || e.shiftKey ? redo() : undo();
         return;
       }
-      if (mod && (key === "f" || key === "h") && file) return e.preventDefault(), setFindOpen(true);
+      if (mod && (key === "f" || key === "h") && file) return (e.preventDefault(), setFindOpen(true));
       if (mod && (key === "b" || key === "i") && selText.length)
-        return e.preventDefault(), void toggleStyle(key === "b" ? "bold" : "italic");
+        return (e.preventDefault(), void toggleStyle(key === "b" ? "bold" : "italic"));
       if (isTyping(e.target)) return;
       if (e.key === "Escape") setSel([]), setAdding(false);
-      if (mod && key === "a") return e.preventDefault(), selectAll();
+      if (mod && key === "a") return (e.preventDefault(), selectAll());
       if (mod && key === "v") return void (pasteTimer.current = window.setTimeout(() => pasteCopied(), 0));
       if (!sel.length) return;
       if (mod && (key === "c" || key === "x")) return copySel(key === "x");
-      if (mod && key === "d") return e.preventDefault(), duplicate();
+      if (mod && key === "d") return (e.preventDefault(), duplicate());
       if (e.key === "Delete" || e.key === "Backspace") e.preventDefault(), remove(sel);
       const n = e.shiftKey ? 10 : 1;
       const d = { ArrowLeft: [-n, 0], ArrowRight: [n, 0], ArrowUp: [0, -n], ArrowDown: [0, n] }[e.key];
@@ -1198,7 +1198,7 @@ export function useEditor() {
   const onPageDown = (e: PointerEvent<HTMLDivElement>, page: number) => {
     if (e.button !== 0 || !e.isPrimary) return;
     const at = pointOn(e, page);
-    if (adding) return e.preventDefault(), addTextAt(at);
+    if (adding) return (e.preventDefault(), addTextAt(at));
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     const boxes = elsRef.current.filter((o) => o.page === page && !o.deleted).map((o) => [o.id, boxOf(o)] as const);
     marquee.current = { ...at, base: additive ? sel : [], boxes };
