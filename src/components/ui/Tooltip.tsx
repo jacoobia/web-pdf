@@ -121,7 +121,7 @@ export function TooltipHost() {
     };
   }, [current]);
 
-  if (!current || !current.anchor.isConnected) return null;
+  if (!current?.anchor.isConnected) return null;
   return createPortal(
     <div
       ref={box}

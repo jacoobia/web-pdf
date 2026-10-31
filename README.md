@@ -51,19 +51,19 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 
 ### How it works
 
-| | |
-| --- | --- |
-| Reading, rendering and saving | [MuPDF](https://mupdf.com), in a web worker |
+|                                |                                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Reading, rendering and saving  | [MuPDF](https://mupdf.com), in a web worker                                                                                          |
 | Measuring text for the preview | [pdf-lib](https://pdf-lib.js.org) and [fontkit](https://github.com/foliojs/fontkit), so lines wrap where they will in the saved file |
-| Saving | Only the text you change is redrawn; the rest of the file is kept as it was. |
+| Saving                         | Only the text you change is redrawn; the rest of the file is kept as it was.                                                         |
 
 ## Browser support
 
-| | Chrome, Edge | Brave | Firefox, Safari |
-| --- | :---: | :---: | :---: |
-| Edit and save PDFs | ✓ | ✓ | ✓ |
-| Save back over the original file | ✓ | ✓ | Saves as a download |
-| Load fonts installed on your computer | ✓ | Sometimes | |
+|                                       | Chrome, Edge |   Brave   |   Firefox, Safari   |
+| ------------------------------------- | :----------: | :-------: | :-----------------: |
+| Edit and save PDFs                    |      ✓       |     ✓     |          ✓          |
+| Save back over the original file      |      ✓       |     ✓     | Saves as a download |
+| Load fonts installed on your computer |      ✓       | Sometimes |                     |
 
 <sub>Tested in Chrome and Brave.</sub>
 
@@ -78,15 +78,15 @@ bun install
 bun run dev
 ```
 
-| Command | Description |
-| --- | --- |
-| `bun run dev` | Start the dev server |
-| `bun run build` | Typecheck and build to `dist/` |
-| `bun run lint` | Lint and check formatting |
-| `bun run format` | Fix lint and formatting issues |
-| `bun run typecheck` | Run the TypeScript compiler |
-| `bun run test` | Run the PDF engine checks (Windows only) |
-| `bun run test:e2e` | Run the browser checks in Chrome (Windows only, needs Node 24) |
+| Command             | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| `bun run dev`       | Start the dev server                                           |
+| `bun run build`     | Typecheck and build to `dist/`                                 |
+| `bun run lint`      | Lint and check formatting                                      |
+| `bun run format`    | Fix lint and formatting issues                                 |
+| `bun run typecheck` | Run the TypeScript compiler                                    |
+| `bun run test`      | Run the PDF engine checks (Windows only)                       |
+| `bun run test:e2e`  | Run the browser checks in Chrome (Windows only, needs Node 24) |
 
 ## Deploying
 

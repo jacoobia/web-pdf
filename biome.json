@@ -22,7 +22,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         "noDescendingSpecificity": "off",
         "noNonNullAssertion": "off"
@@ -38,5 +38,11 @@
         "useSemanticElements": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["scripts/e2e.ts"],
+      "linter": { "rules": { "performance": { "useDomNodeTextContent": "off" } } }
+    }
+  ]
 }
