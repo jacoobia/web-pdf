@@ -66,6 +66,20 @@ type T = {
   tab: (name: string) => Promise<void>;
 };
 
+const tty = process.stdout.isTTY;
+const paint = (code: number, s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
+const [green, red, cyan, dim, bold] = [32, 31, 36, 2, 1].map((code) => (s: string) => paint(code, s));
+const FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+const BANNER = String.raw`
+ _____ ____  _____   _____         _
+| ____|___ \| ____| |_   _|__  ___| |_ ___
+|  _|   __) |  _|     | |/ _ \/ __| __/ __|
+| |___ / __/| |___    | |  __/\__ \ |_\__ \
+|_____|_____|_____|   |_|\___||___/\__|___/
+`;
+console.log(cyan(BANNER));
+const startedAll = performance.now();
+
 const failures: string[] = [];
 let passed = 0;
 
@@ -125,14 +139,25 @@ async function test(
       ).split("\n")[0],
     tab: async (name) => page.getByRole("tab", { name, exact: true }).click(),
   };
+  const started = performance.now();
+  let frame = 0;
+  const spin = tty
+    ? setInterval(() => process.stdout.write(`\r  ${cyan(FRAMES[frame++ % FRAMES.length])} ${name}`), 80)
+    : undefined;
+  const took = () => dim(`${((performance.now() - started) / 1000).toFixed(1)}s`);
+  const done = (line: string) => {
+    clearInterval(spin);
+    process.stdout.write(tty ? `\r\x1b[2K${line}\n` : `${line}\n`);
+  };
   try {
     await run(t);
     assert.deepEqual(errors, [], "no page errors");
     passed++;
-    console.log(`pass  ${name}`);
+    done(`  ${green(tty ? "✔" : "pass")} ${name} ${took()}`);
   } catch (err) {
     failures.push(name);
-    console.log(`FAIL  ${name}\n      ${(err as Error).message.split("\n").join("\n      ")}`);
+    const why = (err as Error).message.split("\n").join("\n      ");
+    done(`  ${red(tty ? "✖" : "FAIL")} ${name} ${took()}\n      ${red(why)}`);
   } finally {
     await ctx.close();
   }
@@ -612,7 +637,10 @@ await test("tooltips show the label and shortcut on hover and keyboard focus", a
 
 await browser.close();
 await server.close();
+const total = dim(`in ${((performance.now() - startedAll) / 1000).toFixed(1)}s`);
 console.log(
-  failures.length ? `\n${failures.length} failed, ${passed} passed` : `\nok: all ${passed} browser checks passed`,
+  failures.length
+    ? `\n  ${bold(red(`${failures.length} failed`))}, ${passed} passed ${total}`
+    : `\n  ${bold(green(`ok: all ${passed} browser checks passed`))} ${total}`,
 );
 process.exit(failures.length ? 1 : 0);
