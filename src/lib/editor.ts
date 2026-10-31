@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { canReadLocalFonts, chromium, download, errorText, isTyping, type LocalFont, PDF_TYPE } from "./browser";
-import { applyDraft, changed, type Draft, dropDraft, loadDraft, saveDraft } from "./drafts";
+import { applyDraft, changed, clearDrafts, type Draft, dropDraft, loadDraft, saveDraft } from "./drafts";
 import {
   type Align,
   type AtsReport,
@@ -362,7 +362,7 @@ export function useEditor() {
       const bytes = new Uint8Array(await f.arrayBuffer());
       clearPreviews();
       const { pages, els, meta: found } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
-      const draft = await loadDraft(f.name, f.size);
+      const draft = prefs.autosave === "1" ? await loadDraft(f.name, f.size) : undefined;
       pendingDraft.current = draft ?? null;
       let list = els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
@@ -908,6 +908,7 @@ export function useEditor() {
     if (!file) return;
     const t = setTimeout(() => {
       if (pendingDraft.current) return;
+      if (prefs.autosave !== "1") return;
       if (!unsaved()) return void dropDraft(file.name);
       const list = elsRef.current.filter(changed);
       const used = new Set([...list.map((e) => e.font), hf.font]);
@@ -925,7 +926,11 @@ export function useEditor() {
       });
     }, 1000);
     return () => clearTimeout(t);
-  }, [file, els, order, hf, pages, fonts, meta, added]);
+  }, [file, els, order, hf, pages, fonts, meta, added, prefs.autosave]);
+
+  useEffect(() => {
+    if (prefs.autosave !== "1") clearDrafts();
+  }, [prefs.autosave]);
 
   const RESTORE = "Restore edits";
   const prompted = useRef(false);

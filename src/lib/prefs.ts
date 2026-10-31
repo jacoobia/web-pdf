@@ -16,6 +16,7 @@ export const DEFAULT_PREFS = {
   snap: "1",
   spelling: "en-GB",
   editText: "panel",
+  autosave: "1",
   marginOn: "0",
   marginPt: "36",
 };
@@ -50,6 +51,7 @@ export function usePrefs() {
     snap: usePref("snap", DEFAULT_PREFS.snap),
     spelling: usePref("spelling", DEFAULT_PREFS.spelling),
     editText: usePref("editText", DEFAULT_PREFS.editText),
+    autosave: usePref("autosave", DEFAULT_PREFS.autosave),
     marginOn: usePref("marginOn", DEFAULT_PREFS.marginOn),
     marginPt: usePref("marginPt", DEFAULT_PREFS.marginPt),
   };

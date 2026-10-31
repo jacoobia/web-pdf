@@ -28,6 +28,7 @@ export const changed = (e: El) => !e.orig || isDirty(e) || linkChanged(e);
 export const saveDraft = (name: string, d: Draft) =>
   stored("drafts", "readwrite", (s) => s.put(d, name)).catch(() => {});
 export const dropDraft = (name: string) => stored("drafts", "readwrite", (s) => s.delete(name)).catch(() => {});
+export const clearDrafts = () => stored("drafts", "readwrite", (s) => s.clear()).catch(() => {});
 export const loadDraft = (name: string, size: number) =>
   stored<Draft | undefined>("drafts", "readonly", (s) => s.get(name))
     .then((d) => (d?.size === size ? d : undefined))

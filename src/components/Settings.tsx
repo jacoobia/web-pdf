@@ -164,6 +164,16 @@ function Preferences({ prefs, set }: { prefs: Prefs; set: SetPref }) {
             ]}
           />
         </Setting>
+        <Setting
+          title="Save edits as you go"
+          description="Keeps unsaved edits in this browser so a closed tab doesn't lose them. Turning this off deletes them."
+        >
+          <Switch
+            label="Save edits as you go"
+            checked={prefs.autosave === "1"}
+            onChange={(v) => set("autosave", v ? "1" : "0")}
+          />
+        </Setting>
         <Setting title="Snap to other text" description="Hold Shift while dragging to move freely.">
           <Switch
             label="Snap to other text"

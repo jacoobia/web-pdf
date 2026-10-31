@@ -306,6 +306,30 @@ await test("document info edits come back with Restore edits", async ({ page, op
   assert.equal(await page.getByRole("textbox", { name: "Title" }).inputValue(), "Draft title");
 });
 
+await test("with saving as you go turned off, reopening offers no edits to restore", async ({ page, open, tab }) => {
+  await open(metaPdf);
+  await tab("Document");
+  await page.getByRole("textbox", { name: "Title" }).fill("Draft title");
+  await page.waitForTimeout(1600);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Save edits as you go" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.waitForTimeout(300);
+  await open(metaPdf);
+  await page.waitForTimeout(300);
+  assert.equal(await page.getByRole("button", { name: "Restore edits" }).count(), 0);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("switch", { name: "Save edits as you go" }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await open(metaPdf);
+  await page.waitForTimeout(300);
+  assert.equal(
+    await page.getByRole("button", { name: "Restore edits" }).count(),
+    0,
+    "turning it off deleted the draft",
+  );
+});
+
 const addedImages = (page: Page) => page.locator('.el.img.moved img[src^="blob:"]');
 const addImage = async (page: Page, file: typeof PNG) => {
   const chooser = page.waitForEvent("filechooser");

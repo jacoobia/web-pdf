@@ -43,7 +43,7 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Shrink large images when saving to fit upload limits.
 - Edit the title, author, subject and keywords in the Info tab, and remove hidden details such as the app that made the file. Saved copies are marked as made with Web PDF unless you remove the hidden details.
 - Check how applicant tracking software will read a CV.
-- Edits are saved in your browser as you go, so a closed tab doesn't lose work.
+- Edits are saved in your browser as you go, so a closed tab doesn't lose work. You can turn this off in Settings.
 - Undo, redo, multi-select and a right-click menu.
 - Light and dark themes, and a layout that works on phones, with pinch to zoom.
 
