@@ -9,10 +9,12 @@ export const FormFieldInput = memo(function FormFieldInput({
   f,
   scale,
   onChange,
+  onSign,
 }: {
   f: FormField;
   scale: number;
   onChange: (id: string, change: Partial<FormField>) => void;
+  onSign: (into: { page: number; rect: FormField["rect"] }) => void;
 }) {
   const common = {
     className: `form-field ${f.kind}`,
@@ -27,6 +29,18 @@ export const FormFieldInput = memo(function FormFieldInput({
     },
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   };
+  if (f.kind === "signature")
+    return (
+      <button
+        type="button"
+        {...common}
+        aria-label={`Sign here (${f.name})`}
+        style={{ ...common.style, fontSize: Math.min(12, f.rect.h * 0.4) * scale }}
+        onClick={() => onSign({ page: f.page, rect: f.rect })}
+      >
+        Sign here
+      </button>
+    );
   if (f.kind === "check" || f.kind === "radio")
     return (
       <input

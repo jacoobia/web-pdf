@@ -36,6 +36,7 @@ import {
   type PageInfo,
   parsePageList,
   pickFace,
+  type Rect,
   replaceMatches,
   type Slot,
   STANDARD_FONTS,
@@ -478,7 +479,7 @@ export function useEditor() {
     const png = await canvas.convertToBlob({ type: "image/png" });
     return { bytes: new Uint8Array(await png.arrayBuffer()), type: "png", w, h };
   };
-  const insertImage = async (blob: Blob, at?: At) => {
+  const insertImage = async (blob: Blob, at?: At, into?: { page: number; rect: Rect }) => {
     try {
       const { w, h, ...file } = await toImageFile(blob);
       const key = crypto.randomUUID();
@@ -489,16 +490,17 @@ export function useEditor() {
         ),
       );
       setAdded((m) => new Map(m).set(key, file));
-      const page = at?.page ?? (positionOf(currentPage) >= 0 ? currentPage : orderRef.current[0].src);
+      const page = into?.page ?? at?.page ?? (positionOf(currentPage) >= 0 ? currentPage : orderRef.current[0].src);
       const pg = pages[page];
-      const fit = Math.min(1, (pg.w * 0.4) / (w * 0.75), (pg.h * 0.4) / (h * 0.75));
+      const box = into?.rect ?? { x: 0, y: 0, w: pg.w * 0.4, h: pg.h * 0.4 };
+      const fit = Math.min(into ? Infinity : 1, box.w / (w * 0.75), box.h / (h * 0.75));
       const [iw, ih] = [Math.round(w * 0.75 * fit), Math.round(h * 0.75 * fit)];
       const el: El = {
         id: `new-${crypto.randomUUID()}`,
         page,
         text: "",
-        x: Math.round(at?.x ?? (pg.w - iw) / 2),
-        y: Math.round(at?.y ?? (pg.h - ih) / 2),
+        x: Math.round(into ? box.x + (box.w - iw) / 2 : (at?.x ?? (pg.w - iw) / 2)),
+        y: Math.round(into ? box.y + (box.h - ih) / 2 : (at?.y ?? (pg.h - ih) / 2)),
         ascent: 0,
         size: 0,
         color: "",
@@ -514,6 +516,17 @@ export function useEditor() {
     } catch (err) {
       setReport({ ok: false, lines: [`Couldn't add that image: ${errorText(err)}`] });
     }
+  };
+  const [signing, setSigning] = useState<{ page: number; rect: Rect } | null>(null);
+  const sign = (field?: FormField) => {
+    const page = field?.page ?? (positionOf(currentPage) >= 0 ? currentPage : orderRef.current[0].src);
+    const pg = pages[page];
+    setSigning({ page, rect: field?.rect ?? { x: (pg.w - 180) / 2, y: (pg.h - 60) / 2, w: 180, h: 60 } });
+  };
+  const placeSignature = async (png: Blob) => {
+    const into = signing;
+    setSigning(null);
+    if (into) await insertImage(png, undefined, into);
   };
   const imageSrcOf = (img: NonNullable<El["image"]>) =>
     img.key ? addedUrls.current.get(img.key) : previews.imageUrl(img);
@@ -1347,6 +1360,10 @@ export function useEditor() {
     patch,
     fields,
     setField,
+    signing,
+    setSigning,
+    sign,
+    placeSignature,
     editing,
     setEditing,
     undo,

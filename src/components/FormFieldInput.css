@@ -28,6 +28,11 @@ textarea.form-field {
   padding-block: 0.15em;
   resize: none;
 }
+.form-field.signature {
+  border: 1px dashed rgb(37 99 235 / 0.5);
+  color: rgb(29 59 143);
+  cursor: pointer;
+}
 .form-field.check,
 .form-field.radio {
   padding: 0;

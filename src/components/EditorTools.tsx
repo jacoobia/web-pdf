@@ -36,6 +36,7 @@ export const ModeTools = ({ editor }: { editor: Editor }) => (
       onClick={() => editor.imageInput.current?.click()}
       disabled={!editor.file}
     />
+    <IconButton icon="sign" label="Add a signature" onClick={() => editor.sign()} disabled={!editor.file} />
   </>
 );
 

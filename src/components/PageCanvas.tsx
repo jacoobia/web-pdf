@@ -118,9 +118,19 @@ export function PageCanvas({ editor }: { editor: Editor }) {
 
   const fieldsByPage = useMemo(() => {
     const m = new Map<number, FormField[]>();
-    for (const f of editor.fields) if (f.kind !== "signature") m.set(f.page, [...(m.get(f.page) ?? []), f]);
+    for (const f of editor.fields) m.set(f.page, [...(m.get(f.page) ?? []), f]);
     return m;
   }, [editor.fields]);
+  const signedOn = (els: El[], r: FormField["rect"]) =>
+    els.some(
+      (e) =>
+        e.image?.key &&
+        !e.deleted &&
+        e.x < r.x + r.w &&
+        e.x + e.image.w > r.x &&
+        e.y < r.y + r.h &&
+        e.y + e.image.h > r.y,
+    );
   const editingEl = editor.editing ? editor.elById.get(editor.editing) : undefined;
   const endEditing = (id: string) => {
     editor.setEditing(null);
@@ -210,9 +220,11 @@ export function PageCanvas({ editor }: { editor: Editor }) {
               )}
           {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
           {isNear &&
-            (fieldsByPage.get(p) ?? []).map((f) => (
-              <FormFieldInput key={f.id} f={f} scale={scale} onChange={editor.setField} />
-            ))}
+            (fieldsByPage.get(p) ?? []).map((f) =>
+              f.kind === "signature" && signedOn(byPage.get(p) ?? [], f.rect) ? null : (
+                <FormFieldInput key={f.id} f={f} scale={scale} onChange={editor.setField} onSign={editor.setSigning} />
+              ),
+            )}
         </div>
       </div>
     );

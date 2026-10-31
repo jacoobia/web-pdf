@@ -760,6 +760,40 @@ await test("form fields fill in on the page, save into the file, and come back w
   ]);
 });
 
+await test("signatures are drawn or typed, fill a signature field, and can be remembered", async ({
+  page,
+  open,
+  saved,
+}) => {
+  await open(FORM);
+  await page.getByRole("button", { name: /Sign here/ }).click();
+  const add = page.getByRole("button", { name: "Add signature" });
+  assert.equal(await add.isDisabled(), true, "nothing drawn yet");
+  const pad = (await page.locator(".signature-pad").boundingBox())!;
+  await page.mouse.move(pad.x + 40, pad.y + 80);
+  await page.mouse.down();
+  for (let i = 1; i <= 20; i++) await page.mouse.move(pad.x + 40 + i * 12, pad.y + 80 + (i % 2 ? 25 : -25));
+  await page.mouse.up();
+  assert.equal(await add.isDisabled(), false, "drawn");
+  await page.getByRole("tab", { name: "Type" }).click();
+  await page.getByRole("textbox", { name: "Your name" }).fill("Leon S. Kennedy");
+  await page.getByText("Remember this signature on this device").click();
+  await add.click();
+  await page.waitForTimeout(400);
+  const sig = (await addedImages(page).first().boundingBox())!;
+  const field = (await page.locator('.page[data-page="0"]').boundingBox())!;
+  const scale = field.width / 595;
+  assert.ok(sig.x >= field.x + 159 * scale && sig.x + sig.width <= field.x + 401 * scale, "fits the field's width");
+  assert.equal(await page.getByRole("button", { name: /Sign here/ }).count(), 0, "field shows as signed");
+  await page.getByRole("button", { name: "Add a signature" }).click();
+  assert.equal(await page.getByRole("tab", { name: "Saved" }).getAttribute("aria-selected"), "true");
+  await page.getByRole("button", { name: "Add signature" }).click();
+  await page.waitForTimeout(400);
+  assert.equal(await addedImages(page).count(), 2);
+  await save({ page } as T);
+  assert.equal(imageCount((await saved()).bytes, 0), 2);
+});
+
 await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
   await open();
   const find = page.getByRole("button", { name: "Find and replace" });

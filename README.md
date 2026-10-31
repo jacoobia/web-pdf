@@ -37,7 +37,8 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Add and edit links on text, such as an email address or a portfolio.
 - Move, copy and delete text and images, with snapping to nearby text.
 - Fill in PDF forms on the page: text boxes, tick boxes, options and dropdowns. Read-only fields stay as they are.
-- Add images such as a photo or signature, and resize any image on the page.
+- Sign by drawing or typing your signature, and remember it on this device for next time. Signing a form's signature field fits it to the box. This places a picture of your signature, not a certificate-based digital signature.
+- Add images such as a photo or logo, and resize any image on the page.
 - Merge PDFs: join several files into a new one in the order you choose, or merge a PDF into the one you have open at the start, the end or around the current page. Dropping a PDF on the page list merges it at that spot.
 - Reorder, rotate, delete and add blank pages, or save some pages on their own.
 - Add headers and footers with page numbers.
