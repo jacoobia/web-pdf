@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { errorText } from "../lib/browser";
 import type { Editor } from "../lib/editor";
 import { openFeedback } from "../lib/feedback";
-import { Button, IconButton, IconLink, Tooltip } from "./ui";
+import { Button, IconButton, IconLink, Menu, Tooltip } from "./ui";
 
 export const REPO_URL = "https://github.com/jacoobia/web-pdf";
 
@@ -62,17 +63,44 @@ export function ThemeToggle({ editor }: { editor: Editor }) {
   );
 }
 
-export const FeedbackButton = ({ editor }: { editor: Editor }) => (
-  <IconButton
-    icon="feedback"
-    label="Send feedback"
-    onClick={() =>
-      openFeedback(REPO_URL.replace("https://github.com/", "")).catch((err) =>
-        editor.setReport({ ok: false, lines: [`Couldn't open feedback: ${errorText(err)}`] }),
-      )
-    }
-  />
-);
+export function HelpMenu({ editor }: { editor: Editor }) {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  return (
+    <>
+      <IconButton
+        icon="help"
+        label="Help"
+        aria-haspopup="menu"
+        aria-expanded={!!at}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt({ left: r.right - 232, top: r.bottom + 6 });
+        }}
+      />
+      {at && (
+        <Menu
+          at={at}
+          onClose={() => setAt(null)}
+          items={[
+            { label: "Guide", shortcut: "?", onSelect: () => editor.setGuide("open") },
+            { label: "Search the guide", shortcut: "Ctrl+K", onSelect: () => editor.setGuide("open") },
+            { label: "Keyboard shortcuts", onSelect: () => editor.setGuide("shortcuts") },
+            "separator",
+            {
+              label: "Send feedback",
+              onSelect: () =>
+                openFeedback(REPO_URL.replace("https://github.com/", "")).catch((err) =>
+                  editor.setReport({ ok: false, lines: [`Couldn't open feedback: ${errorText(err)}`] }),
+                ),
+            },
+            { label: "Source code on GitHub", onSelect: () => open(REPO_URL, "_blank", "noopener") },
+            { label: "About Web PDF", onSelect: () => editor.setSettingsOpen("about") },
+          ]}
+        />
+      )}
+    </>
+  );
+}
 
 export function ThumbsToggle({ editor }: { editor: Editor }) {
   const on = editor.showThumbs;
@@ -92,7 +120,7 @@ export const FindButton = ({ editor }: { editor: Editor }) => (
 );
 
 export const SettingsButton = ({ editor }: { editor: Editor }) => (
-  <IconButton icon="settings" label="Settings" onClick={() => editor.setSettingsOpen(true)} />
+  <IconButton icon="settings" label="Settings" onClick={() => editor.setSettingsOpen("preferences")} />
 );
 
 export const PanelToggle = ({ editor, className }: { editor: Editor; className?: string }) => (

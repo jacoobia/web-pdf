@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { version } from "../../package.json";
-import { ACCENTS, isHex, type Prefs, type SetPref } from "../lib/prefs";
+import { ACCENTS, isHex, type Prefs, type Section, type SetPref } from "../lib/prefs";
 import { REPO_URL } from "./EditorTools";
 import {
   Button,
@@ -19,22 +19,22 @@ import {
 } from "./ui";
 import "./Settings.css";
 
-type Section = "preferences" | "about";
-
 export function Settings({
+  open,
   prefs,
   set,
   onReset,
   onClear,
   onClose,
 }: {
+  open: Section;
   prefs: Prefs;
   set: SetPref;
   onReset: () => void;
   onClear: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [section, setSection] = useState<Section>("preferences");
+  const [section, setSection] = useState(open);
   return (
     <Dialog
       title="Settings"

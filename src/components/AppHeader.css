@@ -33,6 +33,7 @@
   padding: 0 10px 0 16px;
 }
 .header.slim .end {
+  grid-column: 3;
   justify-self: end;
 }
 .brand {

@@ -82,3 +82,5 @@ export function usePrefs() {
   const margin = prefs.marginOn === "1" ? Math.max(0, +prefs.marginPt || 0) : null;
   return { prefs, setPref, resetPrefs, theme, margin };
 }
+
+export type Section = "preferences" | "about";

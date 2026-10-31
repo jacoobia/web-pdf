@@ -20,6 +20,10 @@
     0 4px 12px rgb(0 0 0 / 0.12),
     0 24px 48px rgb(0 0 0 / 0.18);
 }
+.dialog.wide {
+  width: min(960px, 100%);
+  height: min(720px, calc(100dvh - 32px));
+}
 .dialog-head {
   display: flex;
   align-items: center;
@@ -55,6 +59,9 @@
   .dialog {
     width: 100%;
     max-height: 92dvh;
+  }
+  .dialog.wide {
+    height: 92dvh;
     border-radius: 14px 14px 0 0;
     border-bottom: 0;
   }

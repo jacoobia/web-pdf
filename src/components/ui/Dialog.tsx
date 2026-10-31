@@ -11,6 +11,7 @@ export function Dialog({
   tabs,
   footer,
   bodyClass,
+  wide,
   children,
 }: {
   title: string;
@@ -18,6 +19,7 @@ export function Dialog({
   tabs?: ReactNode;
   footer?: ReactNode;
   bodyClass?: string;
+  wide?: boolean;
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
@@ -42,7 +44,7 @@ export function Dialog({
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={dialog}
-        className="dialog"
+        className={cx("dialog", wide && "wide")}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

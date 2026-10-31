@@ -15,6 +15,7 @@ import {
   Select,
   TextArea,
   TextInput,
+  TextLink,
 } from "../ui";
 import { FontNote } from "./FontNote";
 
@@ -34,6 +35,7 @@ export function EditTab({ editor }: { editor: Editor }) {
     return (
       <Section title="Nothing selected">
         <List variant="muted" items={HINTS} />
+        <TextLink onClick={() => editor.setGuide("edit-text")}>More in the guide</TextLink>
       </Section>
     );
 

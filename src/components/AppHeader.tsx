@@ -1,13 +1,12 @@
 import type { Editor } from "../lib/editor";
 import {
-  FeedbackButton,
   FindButton,
+  HelpMenu,
   HistoryTools,
   ModeTools,
   PanelToggle,
   SaveButton,
   SettingsButton,
-  SourceLink,
   ThemeToggle,
   ThumbsToggle,
   ZoomTools,
@@ -21,8 +20,7 @@ export const AppHeader = ({ editor }: { editor: Editor }) =>
   editor.canvasStyle ? <CanvasHeader editor={editor} /> : <ToolbarHeader editor={editor} />;
 
 function ToolbarHeader({ editor }: { editor: Editor }) {
-  const { file, prefs, setPref } = editor;
-  const right = prefs.side === "right";
+  const { file } = editor;
   return (
     <header className="header">
       <div className="doc">
@@ -57,20 +55,13 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
         <Group label="View">
           {file && (
             <>
-              <IconButton
-                className="desktop-only"
-                icon={right ? "panelRight" : "panelLeft"}
-                label={right ? "Move the sidebar to the left" : "Move the sidebar to the right"}
-                onClick={() => setPref("side", right ? "left" : "right")}
-              />
               <PanelToggle editor={editor} className="mobile-only" />
               <ThumbsToggle editor={editor} />
             </>
           )}
           <ThemeToggle editor={editor} />
+          <HelpMenu editor={editor} />
           <SettingsButton editor={editor} />
-          <FeedbackButton editor={editor} />
-          <SourceLink />
         </Group>
         <SaveButton editor={editor} />
       </div>
@@ -117,9 +108,8 @@ function CanvasHeader({ editor }: { editor: Editor }) {
           {file && <ThumbsToggle editor={editor} />}
           {file && <PanelToggle editor={editor} />}
           <ThemeToggle editor={editor} />
+          <HelpMenu editor={editor} />
           <SettingsButton editor={editor} />
-          <FeedbackButton editor={editor} />
-          <SourceLink />
         </Group>
         <SaveButton editor={editor} />
       </div>

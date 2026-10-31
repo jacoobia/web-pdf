@@ -174,6 +174,13 @@ const ICONS = {
     </>
   ),
   feedback: p("M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"),
+  help: (
+    <>
+      {p("M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z")}
+      {p("M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3")}
+      {p("M12 17h.01")}
+    </>
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof ICONS | "github";

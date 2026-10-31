@@ -838,6 +838,61 @@ await test("tooltips show the label and shortcut on hover and keyboard focus", a
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), await tip.innerText());
 });
 
+await test("the guide opens from ?, the header and the start screen, and moves between topics", async ({
+  page,
+  open,
+}) => {
+  const guide = page.getByRole("dialog", { name: "Guide" });
+  const heading = guide.locator("article h3");
+  await page.goto(url);
+  await page.getByRole("button", { name: "Read the guide" }).click();
+  assert.equal(await heading.innerText(), "Opening a PDF");
+  await page.keyboard.press("Escape");
+  await open();
+  await page.locator('.el[aria-label="Jane Example"]').dblclick();
+  await page.locator(".panel textarea").press("?");
+  assert.equal(await guide.count(), 0, "typing ? in text doesn't open it");
+  await page.keyboard.press("Escape");
+  await page.locator(".pages").click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("?");
+  await guide.getByRole("button", { name: "Editing text" }).click();
+  assert.equal(await heading.innerText(), "Editing text");
+  await guide.locator("article").getByRole("button", { name: "fonts" }).click();
+  assert.equal(await heading.innerText(), "Fonts");
+  await guide.getByRole("button", { name: "Next: Find and replace" }).click();
+  assert.equal(await heading.innerText(), "Find and replace");
+  await page.keyboard.press("Escape");
+  await guide.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("menuitem", { name: "Keyboard shortcuts" }).click();
+  assert.equal(await heading.innerText(), "Keyboard shortcuts");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("menuitem", { name: /^Guide/ }).click();
+  assert.equal(await heading.innerText(), "Opening a PDF");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "More in the guide" }).click();
+  assert.equal(await heading.innerText(), "Editing text", "opens at the topic it was asked for");
+  const filter = guide.getByRole("textbox", { name: "Filter topics" });
+  await filter.fill("page count");
+  assert.deepEqual(await guide.locator("nav button").allInnerTexts(), ["Headers and footers"], "matches article text");
+  await filter.press("Enter");
+  assert.equal(await heading.innerText(), "Headers and footers");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+k");
+  assert.equal(await page.evaluate(() => document.activeElement?.getAttribute("aria-label")), "Filter topics");
+  await filter.fill("zzz");
+  await guide.getByText("No topics match.").waitFor();
+  await filter.fill("");
+  for (const topic of await guide.locator("nav button").allInnerTexts()) {
+    await guide.getByRole("button", { name: topic, exact: true }).click();
+    const img = guide.locator(".guide-media img");
+    if (!(await img.count())) continue;
+    await page.waitForFunction((n) => (n as HTMLImageElement).complete, await img.elementHandle());
+    assert.ok(await img.evaluate((n) => (n as HTMLImageElement).naturalWidth > 0), `${topic} has its picture`);
+  }
+});
+
 const WIDGET_STUB = `let open = false;
 window.BugDrop = {
   open() {
@@ -856,7 +911,8 @@ await test("feedback runs in a sandboxed frame that can't reach the page or its 
     r.fulfill({ contentType: "text/javascript", body: WIDGET_STUB }),
   );
   await open();
-  await page.getByRole("button", { name: "Send feedback" }).click();
+  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("menuitem", { name: "Send feedback" }).click();
   const frame = page.frameLocator("#feedback-frame");
   await frame.getByRole("button", { name: "Close feedback" }).waitFor();
   const reach = await page
@@ -876,6 +932,13 @@ await test("feedback runs in a sandboxed frame that can't reach the page or its 
   assert.deepEqual(reach, { page: false, storage: false, origin: "null" });
   await frame.getByRole("button", { name: "Close feedback" }).click();
   await page.locator("#feedback-frame").waitFor({ state: "detached" });
+});
+
+await test("the help menu opens About in settings", async ({ page }) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("menuitem", { name: "About Web PDF" }).click();
+  assert.equal(await page.getByRole("tab", { name: "About" }).getAttribute("aria-selected"), "true");
 });
 
 await test("clearing stored data removes recent files, copies, drafts and the saved signature", async ({

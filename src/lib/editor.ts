@@ -44,7 +44,7 @@ import {
   unrotate,
   unrotateDelta,
 } from "./model";
-import { usePref, usePrefs } from "./prefs";
+import { type Section, usePref, usePrefs } from "./prefs";
 import { usePreviews } from "./previews";
 import { openedAt, type Recent, useRecent } from "./recent";
 import { rememberSignature } from "./signature";
@@ -123,7 +123,8 @@ export function useEditor() {
   const [scale, setScale] = useState(1.5);
   const [adding, setAdding] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<false | Section>(false);
+  const [guide, setGuide] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(() => !matchMedia(NARROW).matches);
   const [fileMenu, setFileMenu] = useState(false);
   const [tab, setTab] = usePref("tab", "edit") as unknown as [Tab, (t: Tab) => void];
@@ -941,9 +942,11 @@ export function useEditor() {
         return;
       }
       if (mod && (key === "f" || key === "h") && file) return (e.preventDefault(), setFindOpen(true));
+      if (mod && key === "k") return (e.preventDefault(), setGuide("open"));
       if (mod && (key === "b" || key === "i") && selText.length)
         return (e.preventDefault(), void toggleStyle(key === "b" ? "bold" : "italic"));
       if (isTyping(e.target)) return;
+      if (e.key === "?") return (e.preventDefault(), setGuide("open"));
       if (e.key === "Escape") setSel([]), setAdding(false);
       if (mod && key === "a") return (e.preventDefault(), selectAll());
       if (mod && key === "v") return void (pasteTimer.current = window.setTimeout(() => pasteCopied(), 0));
@@ -1330,6 +1333,8 @@ export function useEditor() {
     setReport,
     settingsOpen,
     setSettingsOpen,
+    guide,
+    setGuide,
     panelOpen,
     setPanelOpen,
     fileMenu,

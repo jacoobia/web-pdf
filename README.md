@@ -30,6 +30,17 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 
 ## Features
 
+<table>
+  <tr>
+    <td width="50%"><img alt="A volunteer form filled in on the page and signed with a typed signature" src="docs/images/forms-light.png"></td>
+    <td width="50%"><img alt="The Merge PDFs dialog with three files in order" src="docs/images/merge-dark.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Forms and signatures</sub></td>
+    <td align="center"><sub>Merge PDFs</sub></td>
+  </tr>
+</table>
+
 - Start a new PDF from an empty page, A4 or US Letter depending on where you are.
 - Edit existing text in place. Edits are drawn in the PDF's own font when it's available.
 - Find and replace text across the whole document, with spell check as you type.

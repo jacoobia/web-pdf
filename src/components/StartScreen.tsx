@@ -1,6 +1,6 @@
 import type { Editor } from "../lib/editor";
 import { openedAt, type Recent } from "../lib/recent";
-import { Button, Icon, Tooltip } from "./ui";
+import { Button, Icon, TextLink, Tooltip } from "./ui";
 import "./StartScreen.css";
 
 export const StartScreen = ({ editor }: { editor: Editor }) => (
@@ -21,6 +21,9 @@ export const StartScreen = ({ editor }: { editor: Editor }) => (
       <Button onClick={editor.newPdf}>New PDF</Button>
       <Button onClick={() => editor.setMergeList([])}>Merge PDFs</Button>
     </div>
+    <p className="start-guide">
+      New to Web PDF? <TextLink onClick={() => editor.setGuide("open")}>Read the guide</TextLink>
+    </p>
     {editor.recent.length > 0 && <RecentFiles recent={editor.recent} onOpen={editor.reopen} onForget={editor.forget} />}
   </div>
 );

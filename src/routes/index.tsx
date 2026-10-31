@@ -3,6 +3,7 @@ import { AppShell, Workspace } from "../components/AppShell";
 import { AtsDialog } from "../components/AtsDialog";
 import { ContextMenu } from "../components/ContextMenu";
 import { FindBar } from "../components/FindBar";
+import { Guide } from "../components/Guide";
 import { Inspector } from "../components/Inspector";
 import { MergeDialog } from "../components/MergeDialog";
 import { PageCanvas } from "../components/PageCanvas";
@@ -32,8 +33,10 @@ export default function EditorRoute() {
       <SignatureDialog editor={editor} />
       <UnsavedDialog editor={editor} />
       {report && <Toast {...report} onDismiss={() => editor.setReport(null)} />}
+      {editor.guide && <Guide topic={editor.guide} onClose={() => editor.setGuide(null)} />}
       {editor.settingsOpen && (
         <Settings
+          open={editor.settingsOpen}
           prefs={editor.prefs}
           set={editor.setPref}
           onReset={editor.resetPrefs}
