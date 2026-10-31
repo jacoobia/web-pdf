@@ -10,10 +10,3 @@
 .group .tool:hover:not(:disabled) {
   background: var(--surface);
 }
-.group.plain {
-  background: none;
-  padding: 0;
-}
-.group.plain .tool:hover:not(:disabled) {
-  background: var(--surface-2);
-}

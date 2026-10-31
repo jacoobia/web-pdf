@@ -167,6 +167,10 @@ async function test(
 }
 
 const save = async (t: T) => t.page.getByRole("button", { name: "Save", exact: true }).click();
+const closePdf = async (page: Page) => {
+  await page.locator(".file-menu").click();
+  await page.getByRole("menuitem", { name: "Close" }).click();
+};
 const inViewport = (page: Page, sel: string) =>
   page.locator(sel).evaluate((n) => {
     const r = n.getBoundingClientRect();
@@ -807,10 +811,10 @@ await test("unsaved edits ask before closing or opening another file", async ({ 
   const dialog = page.getByRole("dialog", { name: "Unsaved edits" });
   await open();
   await edit();
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await closePdf(page);
   await dialog.getByRole("button", { name: "Cancel" }).click();
   assert.equal(await page.locator(".page").count(), 1, "cancel keeps it open");
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await closePdf(page);
   await dialog.getByRole("button", { name: "Save a copy" }).click();
   assert.match(pdfText((await saved()).bytes, 0), /Leon S\. Kennedy/);
   await page.waitForSelector(".start");
@@ -819,7 +823,7 @@ await test("unsaved edits ask before closing or opening another file", async ({ 
   await dropFiles(page, ".app", [LARGE]);
   await dialog.getByRole("button", { name: "Don't save" }).click();
   await page.waitForFunction(() => document.querySelectorAll(".thumb").length === 4);
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await closePdf(page);
   await page.waitForSelector(".start");
 });
 
@@ -848,7 +852,7 @@ await test("the guide opens from ?, the header and the start screen, and moves b
   const guide = page.getByRole("dialog", { name: "Guide" });
   const heading = guide.locator("article h3");
   await page.goto(url);
-  await page.getByRole("button", { name: "Read the guide" }).click();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   assert.equal(await heading.innerText(), "Opening a PDF");
   await page.keyboard.press("Escape");
   await open();
@@ -944,13 +948,60 @@ await test("settings are split into tabs, and margin size shows only with the ma
   assert.equal(await page.getByRole("button", { name: "Reset to defaults" }).count(), 0);
 });
 
+await test("the start screen's drop box opens the file picker when clicked", async ({ page }) => {
+  await page.goto(url);
+  await page.evaluate(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.showOpenFilePicker = async () => {
+      w.__picked = true;
+      throw new DOMException("Closed", "AbortError");
+    };
+  });
+  await page.getByRole("button", { name: /Drop a PDF here/ }).click();
+  await page.waitForFunction(() => (window as unknown as { __picked?: boolean }).__picked);
+  const drop = page.locator(".drop");
+  const dataTransfer = await page.evaluateHandle(() => {
+    const d = new DataTransfer();
+    d.items.add(new File(["%PDF"], "cv.pdf", { type: "application/pdf" }));
+    return d;
+  });
+  await drop.dispatchEvent("dragenter", { dataTransfer });
+  assert.ok(await drop.evaluate((n) => n.classList.contains("over")), "highlights while a file is over it");
+  assert.match(await drop.innerText(), /Drop to open/);
+  await drop.dispatchEvent("dragleave", { dataTransfer });
+  assert.ok(!(await drop.evaluate((n) => n.classList.contains("over"))), "settles when the file leaves");
+});
+
+await test("the start screen's clear list removes every recent file and its stored copy", async ({ page, open }) => {
+  await open();
+  await closePdf(page);
+  await open(LARGE);
+  await closePdf(page);
+  assert.equal(await page.locator(".recent li").count(), 2);
+  await page.getByRole("button", { name: "Clear list" }).click();
+  await page.getByRole("button", { name: "Clear all" }).click();
+  await page.locator(".recent").waitFor({ state: "detached" });
+  await page.waitForTimeout(200);
+  const files = await page.evaluate(
+    () =>
+      new Promise<number>((ok) => {
+        const r = indexedDB.open("pdf-editor", 3);
+        r.onsuccess = () => {
+          const c = r.result.transaction("files").objectStore("files").count();
+          c.onsuccess = () => ok(c.result);
+        };
+      }),
+  );
+  assert.equal(files, 0, "stored copies are deleted too");
+});
+
 await test("clearing stored data removes recent files, copies, drafts and the saved signature", async ({
   page,
   open,
 }) => {
   await open();
   await page.evaluate(() => localStorage.setItem("signature", "data:image/png;base64,"));
-  await page.getByRole("button", { name: "Close PDF" }).click();
+  await closePdf(page);
   await page.locator(".recent").waitFor();
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("tab", { name: "Privacy" }).click();

@@ -1,45 +1,114 @@
+import { type DragEvent, useId, useState } from "react";
+import { cx } from "../lib/cx";
 import type { Editor } from "../lib/editor";
 import { openedAt, type Recent } from "../lib/recent";
-import { Button, Icon, TextLink, Tooltip } from "./ui";
+import { Button, Icon, type IconName, Tooltip } from "./ui";
 import "./StartScreen.css";
 
-export const StartScreen = ({ editor }: { editor: Editor }) => (
-  <div className="start">
-    <div className="start-intro">
+export function StartScreen({ editor }: { editor: Editor }) {
+  const privacy = useId();
+  const [over, setOver] = useState(false);
+  const isFile = (e: DragEvent) => e.dataTransfer.types.includes("Files");
+  return (
+    <div className="start">
       <h1>Open or start a PDF</h1>
-      <p>Everything stays on this computer. Nothing is uploaded.</p>
+      <button
+        type="button"
+        className={cx("drop", over && "over")}
+        onClick={editor.pickPdf}
+        onDragEnter={(e) => isFile(e) && setOver(true)}
+        onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setOver(false)}
+        onDrop={() => setOver(false)}
+        aria-describedby={privacy}
+      >
+        <span className="drop-badge">
+          <Icon name="fileUp" size={26} />
+        </span>
+        <span className="drop-title">
+          {over ? (
+            "Drop to open"
+          ) : (
+            <>
+              <span className="pointer-fine">Drop a PDF here</span>
+              <span className="pointer-coarse">Choose a PDF</span>
+            </>
+          )}
+        </span>
+        {!over && <span className="drop-hint pointer-fine">or click to choose one</span>}
+        <span className="drop-privacy" id={privacy}>
+          <Icon name="lock" size={13} />
+          Opened on this device. Nothing is uploaded.
+        </span>
+      </button>
+      <div className="start-options">
+        <StartOption icon="plus" title="New PDF" detail="Start from an empty page" onClick={editor.newPdf} />
+        <StartOption
+          icon="layers"
+          title="Merge PDFs"
+          detail="Join several files, in your order"
+          onClick={() => editor.setMergeList([])}
+        />
+      </div>
+      {editor.recent.length > 0 && (
+        <RecentFiles
+          recent={editor.recent}
+          onOpen={editor.reopen}
+          onForget={editor.forget}
+          onForgetAll={editor.forgetAll}
+        />
+      )}
     </div>
-    <div className="drop">
-      <Icon name="open" size={20} />
-      <span>Drop a PDF anywhere in the window, or</span>
-      <Button variant="primary" onClick={editor.pickPdf}>
-        Open PDF
-      </Button>
-    </div>
-    <div className="start-new">
-      <span>Or start from an empty page, or join several PDFs into one.</span>
-      <Button onClick={editor.newPdf}>New PDF</Button>
-      <Button onClick={() => editor.setMergeList([])}>Merge PDFs</Button>
-    </div>
-    <p className="start-guide">
-      New to Web PDF? <TextLink onClick={() => editor.setGuide("open")}>Read the guide</TextLink>
-    </p>
-    {editor.recent.length > 0 && <RecentFiles recent={editor.recent} onOpen={editor.reopen} onForget={editor.forget} />}
-  </div>
+  );
+}
+
+const StartOption = ({
+  icon,
+  title,
+  detail,
+  onClick,
+}: {
+  icon: IconName;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) => (
+  <button type="button" className="start-option" onClick={onClick}>
+    <span className="start-option-icon">
+      <Icon name={icon} size={18} />
+    </span>
+    <span className="start-option-text">
+      <span className="start-option-title">{title}</span>
+      <span className="start-option-detail">{detail}</span>
+    </span>
+  </button>
 );
 
 function RecentFiles({
   recent,
   onOpen,
   onForget,
+  onForgetAll,
 }: {
   recent: Recent[];
   onOpen: (r: Recent) => void;
   onForget: (name: string) => void;
+  onForgetAll: () => void;
 }) {
+  const [sure, setSure] = useState(false);
   return (
     <section className="recent" aria-label="Recently opened">
-      <h2>Recently opened</h2>
+      <div className="recent-head">
+        <h2>Recently opened</h2>
+        <Button
+          size="small"
+          variant="ghost"
+          tone={sure ? "danger" : undefined}
+          onClick={() => (sure ? onForgetAll() : setSure(true))}
+          onBlur={() => setSure(false)}
+        >
+          {sure ? "Clear all" : "Clear list"}
+        </Button>
+      </div>
       <ul>
         {recent.map((r) => (
           <li key={r.name}>

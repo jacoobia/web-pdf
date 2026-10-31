@@ -1309,6 +1309,7 @@ export function useEditor() {
     margin,
     recent,
     forget,
+    forgetAll,
     reopen,
     file,
     meta,

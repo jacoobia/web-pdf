@@ -50,7 +50,7 @@ export const TOPICS: Topic[] = [
     body: () => (
       <>
         <p>
-          Drop a PDF anywhere in the window, or choose <strong>Open PDF</strong> on the start screen. The file is read
+          Drop a PDF anywhere in the window, or click the drop box on the start screen to choose one. The file is read
           on your computer and never uploaded.
         </p>
         <p>
@@ -58,7 +58,10 @@ export const TOPICS: Topic[] = [
           ask for permission first. A copy of files up to 50 MB is also kept in this browser, so they can be reopened
           anywhere.
         </p>
-        <Callout>Remove a file from the list with the cross next to it. This also deletes the stored copy.</Callout>
+        <Callout>
+          Remove a file from the list with the cross next to it, or empty the list with <strong>Clear list</strong>.
+          This also deletes the stored copies.
+        </Callout>
       </>
     ),
   },

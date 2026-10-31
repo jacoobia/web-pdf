@@ -77,5 +77,10 @@ export function useRecent() {
     return copy && { file: copy, copy: true as const };
   };
 
-  return { recent, remember, forget, forgetAll: () => save([]), load };
+  const forgetAll = () => {
+    for (const r of recent) unstore(r.name);
+    save([]);
+  };
+
+  return { recent, remember, forget, forgetAll, load };
 }
