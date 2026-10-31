@@ -131,6 +131,7 @@ function CanvasHeader({ editor }: { editor: Editor }) {
           className="file-menu-list"
           onClose={() => setFileMenu(false)}
           items={[
+            { label: "New PDF", onSelect: editor.newPdf },
             { label: "Open PDF…", onSelect: editor.pickPdf },
             { label: "Save", onSelect: editor.save },
             "separator",

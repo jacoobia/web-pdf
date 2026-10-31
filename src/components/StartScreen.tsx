@@ -6,7 +6,7 @@ import "./StartScreen.css";
 export const StartScreen = ({ editor }: { editor: Editor }) => (
   <div className="start">
     <div className="start-intro">
-      <h1>Open a PDF</h1>
+      <h1>Open or start a PDF</h1>
       <p>Everything stays on this computer. Nothing is uploaded.</p>
     </div>
     <div className="drop">
@@ -15,6 +15,10 @@ export const StartScreen = ({ editor }: { editor: Editor }) => (
       <Button variant="primary" onClick={editor.pickPdf}>
         Open PDF
       </Button>
+    </div>
+    <div className="start-new">
+      <span>Or start from an empty page.</span>
+      <Button onClick={editor.newPdf}>New PDF</Button>
     </div>
     {editor.recent.length > 0 && <RecentFiles recent={editor.recent} onOpen={editor.reopen} onForget={editor.forget} />}
   </div>

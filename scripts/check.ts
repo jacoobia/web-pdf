@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import * as mupdf from "mupdf";
 import { PDFDocument as LibDoc, PDFName } from "pdf-lib";
+import { blankPdf } from "../src/lib/model";
 import {
   alignShift,
   atsCheck,
@@ -528,6 +529,24 @@ const resized = extract(src).els.find((e) => e.image)!;
 assert.equal(isDirty(resized), false);
 resized.image = { ...resized.image!, w: resized.image!.w * 2, h: resized.image!.h * 2 };
 assert.equal(isDirty(resized), true, "resizing an original image redraws it");
+
+for (const [locale, w, h] of [
+  ["en-GB", 595, 842],
+  ["en-US", 612, 792],
+] as const) {
+  const blank = blankPdf(locale);
+  const opened = extract(blank);
+  assert.equal(opened.els.length, 0, "a new document starts empty");
+  const [page] = opened.pages;
+  assert.deepEqual([Math.round(page.w), Math.round(page.h)], [w, h], `${locale} paper size`);
+  const typed = { ...hf[0], id: "new", page: 0, text: "Hello" };
+  const out = extract((await exportPdf(blank, [typed], new Map())).pdf).els;
+  assert.deepEqual(
+    out.map((e) => e.text),
+    ["Hello"],
+    "text saves onto a new document",
+  );
+}
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

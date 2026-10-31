@@ -30,6 +30,7 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 
 ## Features
 
+- Start a new PDF from an empty page, A4 or US Letter depending on where you are.
 - Edit existing text in place. Edits are drawn in the PDF's own font when it's available.
 - Find and replace text across the whole document, with spell check as you type.
 - Add new text boxes that wrap to a width you set, with bold, italic and alignment.

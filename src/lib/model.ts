@@ -278,6 +278,29 @@ export function textBounds(el: El, fonts: Map<string, Uint8Array>): Rect {
 
 export type Compression = "off" | "balanced" | "small";
 
+const LETTER_REGIONS = /-(US|CA|MX|PH|CL|CO|VE)$/i;
+
+/** A one-page empty PDF: Letter where that's the local paper size, A4 everywhere else. */
+export function blankPdf(locale = navigator.language): Uint8Array<ArrayBuffer> {
+  const [w, h] = LETTER_REGIONS.test(locale) ? [612, 792] : [595.28, 841.89];
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Resources << >> >>`,
+  ];
+  let pdf = "%PDF-1.7\n";
+  const offsets = objects.map((o, i) => {
+    const at = pdf.length;
+    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
+    return at;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("");
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(pdf);
+}
+
 export const formatBytes = (n: number) =>
   n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
 

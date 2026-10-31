@@ -13,6 +13,7 @@ import {
   type Align,
   type AtsReport,
   alignShift,
+  blankPdf,
   type Compression,
   compact,
   type El,
@@ -99,7 +100,12 @@ const newText = (fields: Pick<El, "page" | "text" | "x" | "y" | "size" | "color"
 export function useEditor() {
   const { prefs, setPref, resetPrefs, theme, margin } = usePrefs();
   const { recent, remember, forget, load } = useRecent();
-  const [file, setFile] = useState<{ name: string; size: number; handle?: FileSystemFileHandle } | null>(null);
+  const [file, setFile] = useState<{
+    name: string;
+    size: number;
+    handle?: FileSystemFileHandle;
+    fresh?: boolean;
+  } | null>(null);
   const [compression, setCompression] = useState<Compression>("off");
   const [estimate, setEstimate] = useState<{ bytes: number; compression: Compression; busy?: boolean } | null>(null);
   const [pages, setPages] = useState<PageInfo[]>([]);
@@ -345,7 +351,7 @@ export function useEditor() {
     }
   }
 
-  const openPdf = async (f: File, handle?: FileSystemFileHandle) => {
+  const openPdf = async (f: File, handle?: FileSystemFileHandle, fresh = false) => {
     try {
       setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
@@ -365,9 +371,9 @@ export function useEditor() {
       merged.current = false;
       setMeta(found);
       saved.current = { els: list, hf, order: first, meta: found };
-      setFile({ name: f.name, size: f.size, handle });
+      setFile({ name: f.name, size: f.size, handle, fresh });
       setEstimate(null);
-      remember(f.name, handle, f);
+      if (!fresh) remember(f.name, handle, f);
       setPages(pages);
       setOrder(first);
       setEls(list);
@@ -485,6 +491,8 @@ export function useEditor() {
     }
   };
 
+  const newPdf = () => openPdf(new File([blankPdf()], "Untitled.pdf", { type: "application/pdf" }), undefined, true);
+
   const reopen = async (r: Recent) => {
     const found = await load(r);
     if (!found) return pickPdf();
@@ -580,7 +588,8 @@ export function useEditor() {
 
   const save = async (only?: Slot[]) => {
     if (!file) return;
-    const suggestedName = `${file.name.replace(/\.pdf$/i, "")}-${only ? "pages" : "edited"}.pdf`;
+    const suggestedName =
+      file.fresh && !only ? file.name : `${file.name.replace(/\.pdf$/i, "")}-${only ? "pages" : "edited"}.pdf`;
     let target: FileSystemFileHandle | undefined;
     if ("showSaveFilePicker" in window) {
       const pick = (startIn: unknown) => chromium.showSaveFilePicker({ suggestedName, startIn, types: [PDF_TYPE] });
@@ -1242,6 +1251,7 @@ export function useEditor() {
     closePdf,
     openFiles,
     pickPdf,
+    newPdf,
     save: () => save(),
     swapFonts,
     applyFontToAll,

@@ -577,6 +577,21 @@ await test("Ctrl+wheel zooms around the cursor; a plain wheel scrolls", async ({
   assert.ok((await page.locator(".pages").evaluate((m) => m.scrollTop)) > top, "plain wheel scrolls");
 });
 
+await test("new PDF starts an empty page that saves as Untitled.pdf", async ({ page, saved }) => {
+  await page.goto(url);
+  await page.getByRole("button", { name: "New PDF" }).click();
+  await page.waitForSelector('.page canvas[width]:not([width="0"])', { state: "attached" });
+  await page.getByRole("button", { name: "Add text" }).click();
+  await page.locator('.page[data-page="0"]').click({ position: { x: 100, y: 100 } });
+  await page.locator(".panel textarea").fill("Leon S. Kennedy");
+  await save({ page } as T);
+  const { bytes, name } = await saved();
+  assert.equal(name, "Untitled.pdf");
+  assert.equal(pageCount(bytes), 1);
+  assert.match(pdfText(bytes, 0), /Leon S\. Kennedy/);
+  assert.equal(await page.evaluate(() => localStorage.getItem("recent")), null, "not added to recent files");
+});
+
 await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
   await open();
   const find = page.getByRole("button", { name: "Find and replace" });
