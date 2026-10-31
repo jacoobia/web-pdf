@@ -11,7 +11,7 @@ export { Menu, type MenuEntry, type MenuItem } from "./Menu";
 export { Note } from "./Note";
 export { Panel } from "./Panel";
 export { Segmented } from "./Segmented";
-export { Setting, SettingGroup } from "./Setting";
+export { Setting } from "./Setting";
 export { Swatches } from "./Swatches";
 export { Switch } from "./Switch";
 export { Badge, Callout, Dot, Kbd, List, Muted, Pre, Spinner, Tag } from "./Text";

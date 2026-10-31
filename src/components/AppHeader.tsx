@@ -1,7 +1,8 @@
 import type { Editor } from "../lib/editor";
 import {
+  FeedbackButton,
   FindButton,
-  HelpMenu,
+  GuideButton,
   HistoryTools,
   ModeTools,
   PanelToggle,
@@ -60,8 +61,9 @@ function ToolbarHeader({ editor }: { editor: Editor }) {
             </>
           )}
           <ThemeToggle editor={editor} />
-          <HelpMenu editor={editor} />
+          <GuideButton editor={editor} />
           <SettingsButton editor={editor} />
+          <FeedbackButton editor={editor} />
         </Group>
         <SaveButton editor={editor} />
       </div>
@@ -108,8 +110,9 @@ function CanvasHeader({ editor }: { editor: Editor }) {
           {file && <ThumbsToggle editor={editor} />}
           {file && <PanelToggle editor={editor} />}
           <ThemeToggle editor={editor} />
-          <HelpMenu editor={editor} />
+          <GuideButton editor={editor} />
           <SettingsButton editor={editor} />
+          <FeedbackButton editor={editor} />
         </Group>
         <SaveButton editor={editor} />
       </div>

@@ -16,10 +16,24 @@
   background: var(--accent-wash);
   outline: 1.5px solid var(--accent);
 }
-.accent-preview .hex {
-  flex: 1;
-  width: auto;
-  min-width: 100px;
+.settings-tab {
+  gap: 18px;
+  padding-top: 18px;
+}
+@media (min-width: 761px) {
+  .settings-tab,
+  .about {
+    min-height: 422px;
+  }
+}
+.accent-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.accent-pick .hex {
+  width: 96px;
 }
 .about {
   gap: 12px;

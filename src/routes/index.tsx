@@ -36,7 +36,6 @@ export default function EditorRoute() {
       {editor.guide && <Guide topic={editor.guide} onClose={() => editor.setGuide(null)} />}
       {editor.settingsOpen && (
         <Settings
-          open={editor.settingsOpen}
           prefs={editor.prefs}
           set={editor.setPref}
           onReset={editor.resetPrefs}

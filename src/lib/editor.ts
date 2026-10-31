@@ -44,7 +44,7 @@ import {
   unrotate,
   unrotateDelta,
 } from "./model";
-import { type Section, usePref, usePrefs } from "./prefs";
+import { usePref, usePrefs } from "./prefs";
 import { usePreviews } from "./previews";
 import { openedAt, type Recent, useRecent } from "./recent";
 import { rememberSignature } from "./signature";
@@ -123,7 +123,7 @@ export function useEditor() {
   const [scale, setScale] = useState(1.5);
   const [adding, setAdding] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState<false | Section>(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [guide, setGuide] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(() => !matchMedia(NARROW).matches);
   const [fileMenu, setFileMenu] = useState(false);

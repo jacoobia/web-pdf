@@ -184,6 +184,7 @@ await test("spell check is on in British English by default and inherited by tex
 await test("spell check setting switches language and turns off, and survives a reload", async ({ page, open }) => {
   await open();
   await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Editing" }).click();
   await page.getByRole("radio", { name: "US" }).click();
   assert.equal(await page.locator(".app").getAttribute("lang"), "en-US");
   await page.getByRole("radio", { name: "Off" }).click();
@@ -315,6 +316,7 @@ await test("with saving as you go turned off, reopening offers no edits to resto
   await page.getByRole("textbox", { name: "Title" }).fill("Draft title");
   await page.waitForTimeout(1600);
   await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Privacy" }).click();
   await page.getByRole("switch", { name: "Save edits as you go" }).click();
   await page.getByRole("button", { name: "Done" }).click();
   await page.waitForTimeout(300);
@@ -322,6 +324,7 @@ await test("with saving as you go turned off, reopening offers no edits to resto
   await page.waitForTimeout(300);
   assert.equal(await page.getByRole("button", { name: "Restore edits" }).count(), 0);
   await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Privacy" }).click();
   await page.getByRole("switch", { name: "Save edits as you go" }).click();
   await page.getByRole("button", { name: "Done" }).click();
   await open(metaPdf);
@@ -863,12 +866,7 @@ await test("the guide opens from ?, the header and the start screen, and moves b
   assert.equal(await heading.innerText(), "Find and replace");
   await page.keyboard.press("Escape");
   await guide.waitFor({ state: "detached" });
-  await page.getByRole("button", { name: "Help" }).click();
-  await page.getByRole("menuitem", { name: "Keyboard shortcuts" }).click();
-  assert.equal(await heading.innerText(), "Keyboard shortcuts");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Help" }).click();
-  await page.getByRole("menuitem", { name: /^Guide/ }).click();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   assert.equal(await heading.innerText(), "Opening a PDF");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "More in the guide" }).click();
@@ -911,8 +909,7 @@ await test("feedback runs in a sandboxed frame that can't reach the page or its 
     r.fulfill({ contentType: "text/javascript", body: WIDGET_STUB }),
   );
   await open();
-  await page.getByRole("button", { name: "Help" }).click();
-  await page.getByRole("menuitem", { name: "Send feedback" }).click();
+  await page.getByRole("button", { name: "Send feedback" }).click();
   const frame = page.frameLocator("#feedback-frame");
   await frame.getByRole("button", { name: "Close feedback" }).waitFor();
   const reach = await page
@@ -934,11 +931,17 @@ await test("feedback runs in a sandboxed frame that can't reach the page or its 
   await page.locator("#feedback-frame").waitFor({ state: "detached" });
 });
 
-await test("the help menu opens About in settings", async ({ page }) => {
+await test("settings are split into tabs, and margin size shows only with the margin on", async ({ page }) => {
   await page.goto(url);
-  await page.getByRole("button", { name: "Help" }).click();
-  await page.getByRole("menuitem", { name: "About Web PDF" }).click();
-  assert.equal(await page.getByRole("tab", { name: "About" }).getAttribute("aria-selected"), "true");
+  await page.getByRole("button", { name: "Settings" }).click();
+  assert.equal(await page.getByRole("tab", { name: "Appearance" }).getAttribute("aria-selected"), "true");
+  await page.getByRole("tab", { name: "Editing" }).click();
+  const size = page.getByRole("spinbutton", { name: "Margin size in points" });
+  assert.equal(await size.count(), 0, "hidden while the margin is off");
+  await page.getByRole("switch", { name: "Keep inside the margin" }).click();
+  await size.waitFor();
+  await page.getByRole("tab", { name: "Privacy" }).click();
+  assert.equal(await page.getByRole("button", { name: "Reset to defaults" }).count(), 0);
 });
 
 await test("clearing stored data removes recent files, copies, drafts and the saved signature", async ({
@@ -950,6 +953,7 @@ await test("clearing stored data removes recent files, copies, drafts and the sa
   await page.getByRole("button", { name: "Close PDF" }).click();
   await page.locator(".recent").waitFor();
   await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Privacy" }).click();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: "Clear everything" }).click();
   await page.getByText("Cleared").waitFor();
