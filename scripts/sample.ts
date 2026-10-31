@@ -1,6 +1,6 @@
 import fontkit from "@pdf-lib/fontkit";
 import * as mupdf from "mupdf";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, PDFString, rgb, StandardFonts } from "pdf-lib";
 
 export const CALIBRI = "C:/Windows/Fonts/calibri.ttf";
 
@@ -111,8 +111,52 @@ export async function makeHeavySample(): Promise<Uint8Array> {
   return doc.save();
 }
 
+export async function makeForm(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const form = doc.getForm();
+  const label = (text: string, y: number) => page.drawText(text, { x: 40, y: y + 6, size: 11, font });
+  label("Full name", 760);
+  form.createTextField("name").addToPage(page, { x: 160, y: 752, width: 300, height: 24 });
+  label("Notes", 700);
+  const notes = form.createTextField("notes");
+  notes.enableMultiline();
+  notes.addToPage(page, { x: 160, y: 640, width: 300, height: 70 });
+  label("Subscribe", 600);
+  form.createCheckBox("subscribe").addToPage(page, { x: 160, y: 598, width: 16, height: 16 });
+  label("Size", 560);
+  const size = form.createRadioGroup("size");
+  size.addOptionToPage("small", page, { x: 160, y: 558, width: 16, height: 16 });
+  size.addOptionToPage("large", page, { x: 220, y: 558, width: 16, height: 16 });
+  label("Country", 520);
+  const country = form.createDropdown("country");
+  country.addOptions(["United Kingdom", "Ireland", "France"]);
+  country.addToPage(page, { x: 160, y: 512, width: 200, height: 24 });
+  label("Reference", 480);
+  const ref = form.createTextField("ref");
+  ref.setText("ABC-123");
+  ref.enableReadOnly();
+  ref.addToPage(page, { x: 160, y: 472, width: 200, height: 24 });
+  label("Signature", 420);
+  const sig = doc.context.obj({
+    Type: "Annot",
+    Subtype: "Widget",
+    FT: "Sig",
+    T: PDFString.of("signature"),
+    Rect: [160, 400, 400, 440],
+    F: 4,
+    P: page.ref,
+  });
+  const sigRef = doc.context.register(sig);
+  page.node.addAnnot(sigRef);
+  form.acroForm.addField(sigRef);
+  return doc.save();
+}
+
 if (import.meta.main) {
   await Bun.write("scripts/sample.pdf", await makeSample());
+  await Bun.write("scripts/form.pdf", await makeForm());
   await Bun.write("scripts/large.pdf", await makeLargeSample());
   if (Bun.argv.includes("--heavy")) await Bun.write("scripts/heavy.pdf", await makeHeavySample());
 }

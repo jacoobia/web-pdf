@@ -5,6 +5,7 @@ import {
   type Compression,
   cleanFontName,
   type El,
+  type FormField,
   fallbackFont,
   HYPHEN_CHARS,
   HYPHENS,
@@ -141,12 +142,67 @@ export function mergePdf(bytes: Uint8Array, other: Uint8Array, blanks: PageInfo[
 export const combinePdfs = (files: Uint8Array[]) =>
   files.slice(1).reduce((all, f) => mergePdf(all, f, []).pdf, files[0]);
 
-export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta: Meta } {
+const KINDS: Record<string, FormField["kind"]> = {
+  text: "text",
+  checkbox: "check",
+  radiobutton: "radio",
+  combobox: "choice",
+  listbox: "choice",
+  signature: "signature",
+};
+const isOn = (w: mupdf.PDFWidget) => {
+  const as = w.getObject().get("AS");
+  return as.isName() && as.asName() !== "Off";
+};
+
+function readFields(page: mupdf.PDFPage, p: number): FormField[] {
+  return page.getWidgets().flatMap((w, index) => {
+    const kind = KINDS[w.getFieldType()];
+    if (!kind) return [];
+    const [x0, y0, x1, y1] = w.getRect();
+    const da = w.getObject().getInheritable("DA");
+    const size = +((da.isString() ? da.asString() : "").match(/([\d.]+) Tf/)?.[1] ?? 0);
+    return {
+      id: `w${p}-${index}`,
+      page: p,
+      index,
+      kind,
+      name: w.getName(),
+      rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
+      value: kind === "text" || kind === "choice" ? w.getValue() : "",
+      checked: (kind === "check" || kind === "radio") && isOn(w),
+      options: kind === "choice" ? w.getOptions() : [],
+      multiline: kind === "text" && w.isMultiline(),
+      readOnly: w.isReadOnly(),
+      maxLen: kind === "text" ? w.getMaxLen() : 0,
+      size,
+    };
+  });
+}
+
+function applyFields(doc: mupdf.PDFDocument, fields: FormField[]) {
+  for (const p of new Set(fields.map((f) => f.page))) {
+    const widgets = doc.loadPage(p).getWidgets();
+    for (const f of fields.filter((f) => f.page === p)) {
+      const w = widgets[f.index];
+      if (!w || w.isReadOnly()) continue;
+      if (f.kind === "text" && w.getValue() !== f.value) w.setTextValue(f.value);
+      else if (f.kind === "choice" && w.getValue() !== f.value) w.setChoiceValue(f.value);
+      else if (f.kind === "check" ? isOn(w) !== f.checked : f.kind === "radio" && f.checked && !isOn(w)) w.toggle();
+      else continue;
+      w.update();
+    }
+  }
+}
+
+export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta: Meta; fields: FormField[] } {
   const doc = open(bytes);
   const pages: PageInfo[] = [];
   const els: El[] = [];
+  const fields: FormField[] = [];
   for (let p = 0; p < doc.countPages(); p++) {
     const page = doc.loadPage(p);
+    fields.push(...readFields(page, p));
     const [x0, y0, x1, y1] = page.getBounds();
     const rotate = page.getObject().getInheritable("Rotate");
     pages.push({ w: x1 - x0, h: y1 - y0, rotated: rotate.isNumber() && rotate.asNumber() % 360 !== 0 });
@@ -240,7 +296,7 @@ export function extract(bytes: Uint8Array): { pages: PageInfo[]; els: El[]; meta
         if (hit) el.link = el.orig.link = hit.uri;
       }
   }
-  return { pages, els, meta: readMeta(doc) };
+  return { pages, els, meta: readMeta(doc), fields };
 }
 
 function rewriteLinks(doc: mupdf.PDFDocument, els: El[], fonts: Map<string, Uint8Array>) {
@@ -280,8 +336,24 @@ function removeEdited(page: mupdf.PDFPage, removed: Removed) {
   redact(page, removed.images, true);
 }
 
-function pixels(page: mupdf.PDFPage, scale: number) {
-  const pix = page.toPixmap([scale, 0, 0, scale, 0, 0], mupdf.ColorSpace.DeviceRGB, false);
+function pixels(page: mupdf.PDFPage, scale: number, fields = true) {
+  const m: mupdf.Matrix = [scale, 0, 0, scale, 0, 0];
+  let pix: mupdf.Pixmap;
+  if (fields) pix = page.toPixmap(m, mupdf.ColorSpace.DeviceRGB, false);
+  else {
+    const [x0, y0, x1, y1] = page.getBounds();
+    pix = new mupdf.Pixmap(
+      mupdf.ColorSpace.DeviceRGB,
+      [Math.floor(x0 * scale), Math.floor(y0 * scale), Math.ceil(x1 * scale), Math.ceil(y1 * scale)],
+      false,
+    );
+    pix.clear(255);
+    const device = new mupdf.DrawDevice(mupdf.Matrix.identity, pix);
+    page.runPageContents(device, m);
+    page.runPageAnnots(device, m);
+    device.close();
+    device.destroy();
+  }
   const w = pix.getWidth(),
     h = pix.getHeight(),
     stride = pix.getStride(),
@@ -322,7 +394,7 @@ export class Previewer {
       images: removed.images.filter((r) => !have.has(rectKey("i", r))),
     });
     this.applied.set(page, want);
-    const out = pixels(p, scale);
+    const out = pixels(p, scale, false);
     p.destroy();
     return out;
   }
@@ -620,6 +692,7 @@ export async function exportPdf(
   compression: Compression = "off",
   meta?: Meta,
   added: Map<string, ImageFile> = new Map(),
+  fields: FormField[] = [],
 ): Promise<{ pdf: Uint8Array; problems: string[] }> {
   const doc = open(bytes);
   for (const pg of layout?.pages.slice(doc.countPages()) ?? [])
@@ -633,6 +706,7 @@ export async function exportPdf(
   for (let p = 0; p < doc.countPages(); p++) removeEdited(doc.loadPage(p), removedOn(els, p));
   rewriteLinks(doc, els, fonts);
   drawEdits(doc, els, fonts, originals, added);
+  applyFields(doc, fields);
   if (meta) applyMeta(doc, meta);
   if (!meta?.strip) stamp(doc);
   const arranged = layout && !isIdentity(layout);

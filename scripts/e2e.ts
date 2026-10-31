@@ -12,6 +12,7 @@ import { createServer } from "vite";
 const dir = join(tmpdir(), "web-pdf-e2e");
 mkdirSync(dir, { recursive: true });
 const SAMPLE = "scripts/sample.pdf";
+const FORM = "scripts/form.pdf";
 const LARGE = "scripts/large.pdf";
 
 const metaPdf = await (async () => {
@@ -721,6 +722,43 @@ await test(
   {},
   { editText: "page" },
 );
+
+const formValues = (bytes: Uint8Array) =>
+  (mupdf.Document.openDocument(bytes, "application/pdf") as mupdf.PDFDocument)
+    .loadPage(0)
+    .getWidgets()
+    .map((w) => `${w.getName()}=${w.getValue()}`);
+
+await test("form fields fill in on the page, save into the file, and come back with Restore edits", async ({
+  page,
+  open,
+  saved,
+}) => {
+  await open(FORM);
+  await page.getByRole("textbox", { name: "name" }).fill("Leon S. Kennedy");
+  await page.getByRole("textbox", { name: "notes" }).fill("Rookie\nRaccoon City");
+  await page.getByRole("checkbox", { name: "subscribe" }).check();
+  await page.getByRole("radio", { name: "size" }).nth(1).check();
+  await page.getByRole("combobox", { name: "country" }).selectOption("Ireland");
+  assert.equal(await page.getByRole("textbox", { name: "ref" }).isDisabled(), true, "read-only field");
+  assert.equal(await page.locator(".badge").count(), 1, "marked as edited");
+  await page.waitForTimeout(1600);
+  await open(FORM);
+  assert.equal(await page.getByRole("textbox", { name: "name" }).inputValue(), "");
+  await page.getByRole("button", { name: "Restore edits" }).click();
+  assert.equal(await page.getByRole("textbox", { name: "name" }).inputValue(), "Leon S. Kennedy");
+  await save({ page } as T);
+  assert.deepEqual(formValues((await saved()).bytes), [
+    "name=Leon S. Kennedy",
+    "notes=Rookie\nRaccoon City",
+    "subscribe=Yes",
+    "size=1",
+    "size=1",
+    "country=Ireland",
+    "ref=ABC-123",
+    "signature=",
+  ]);
+});
 
 await test("tooltips show the label and shortcut on hover and keyboard focus", async ({ page, open }) => {
   await open();

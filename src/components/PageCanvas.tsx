@@ -1,7 +1,8 @@
 import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Editor } from "../lib/editor";
-import { contentTransform, type El, isDirty, type Slot, turned } from "../lib/model";
+import { contentTransform, type El, type FormField, isDirty, type Slot, turned } from "../lib/model";
 import { ZoomTools } from "./EditorTools";
+import { FormFieldInput } from "./FormFieldInput";
 import { InlineText } from "./InlineText";
 import { HeaderFooterItem, PageItem } from "./PageItem";
 import { StartScreen } from "./StartScreen";
@@ -115,6 +116,11 @@ export function PageCanvas({ editor }: { editor: Editor }) {
     return node;
   };
 
+  const fieldsByPage = useMemo(() => {
+    const m = new Map<number, FormField[]>();
+    for (const f of editor.fields) if (f.kind !== "signature") m.set(f.page, [...(m.get(f.page) ?? []), f]);
+    return m;
+  }, [editor.fields]);
   const editingEl = editor.editing ? editor.elById.get(editor.editing) : undefined;
   const endEditing = (id: string) => {
     editor.setEditing(null);
@@ -146,6 +152,7 @@ export function PageCanvas({ editor }: { editor: Editor }) {
       fonts,
       previews.imageVersion,
       editingEl?.page === p && editingEl,
+      isNear && fieldsByPage.get(p),
     ];
     const hit = pageViews.current.get(p);
     if (hit?.deps.every((d, i) => d === deps[i])) return hit.node;
@@ -202,6 +209,10 @@ export function PageCanvas({ editor }: { editor: Editor }) {
                 ),
               )}
           {isNear && (hfByPage.get(p) ?? []).map((el) => <HeaderFooterItem key={el.id} el={el} scale={scale} />)}
+          {isNear &&
+            (fieldsByPage.get(p) ?? []).map((f) => (
+              <FormFieldInput key={f.id} f={f} scale={scale} onChange={editor.setField} />
+            ))}
         </div>
       </div>
     );

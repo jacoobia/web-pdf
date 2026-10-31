@@ -1,5 +1,6 @@
 import {
   type El,
+  type FormField,
   type HeaderFooter,
   type ImageFile,
   isDirty,
@@ -21,6 +22,7 @@ export type Draft = {
   meta?: Meta | null;
   images?: [string, ImageFile][];
   base?: Uint8Array;
+  fields?: FormField[];
 };
 
 export const changed = (e: El) => !e.orig || isDirty(e) || linkChanged(e);

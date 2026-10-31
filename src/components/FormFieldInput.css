@@ -1,0 +1,34 @@
+.form-field {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 0.25em;
+  border: 0;
+  border-radius: 0;
+  background: rgb(37 99 235 / 0.1);
+  color: #000;
+  font-family: Helvetica, Arial, sans-serif;
+  line-height: 1.2;
+  accent-color: var(--accent);
+}
+.form-field:hover:not(:disabled) {
+  background: rgb(37 99 235 / 0.16);
+}
+.form-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.form-field:disabled {
+  background: transparent;
+  color: #000;
+  opacity: 1;
+}
+textarea.form-field {
+  padding-block: 0.15em;
+  resize: none;
+}
+.form-field.check,
+.form-field.radio {
+  padding: 0;
+}

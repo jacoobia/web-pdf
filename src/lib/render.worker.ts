@@ -1,4 +1,4 @@
-import type { AtsReport, Compression, El, ImageFile, Layout, Meta, PageInfo, Removed } from "./pdf";
+import type { AtsReport, Compression, El, FormField, ImageFile, Layout, Meta, PageInfo, Removed } from "./pdf";
 
 export type WorkerIn =
   | { type: "open"; id: number; bytes: Uint8Array }
@@ -13,6 +13,7 @@ export type WorkerIn =
       compression?: Compression;
       meta?: Meta;
       images?: Map<string, ImageFile>;
+      fields?: FormField[];
     }
   | { type: "merge"; id: number; bytes: Uint8Array; blanks: PageInfo[] }
   | { type: "combine"; id: number; files: Uint8Array[] }
@@ -23,14 +24,15 @@ export type WorkerIn =
       fonts: Map<string, Uint8Array>;
       layout?: Layout;
       images?: Map<string, ImageFile>;
+      fields?: FormField[];
     };
 
 export type Replies = {
-  open: { pages: PageInfo[]; els: El[]; meta: Meta };
+  open: { pages: PageInfo[]; els: El[]; meta: Meta; fields: FormField[] };
   image: { png: Uint8Array };
   export: { pdf: Uint8Array; problems: string[] };
   ats: AtsReport;
-  merge: { pages: PageInfo[]; els: El[]; pdf: Uint8Array };
+  merge: { pages: PageInfo[]; els: El[]; fields: FormField[]; pdf: Uint8Array };
   combine: { pdf: Uint8Array };
 };
 
@@ -75,13 +77,16 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
       return reply(data.id, {
         pages: all.pages.slice(first),
         els: all.els.filter((e) => e.page >= first),
+        fields: all.fields.filter((f) => f.page >= first),
         pdf: pdf.slice(),
       });
     }
     if (data.type === "ats")
       return reply(
         data.id,
-        atsCheck((await exportPdf(bytes, data.els, data.fonts, data.layout, "off", undefined, data.images)).pdf),
+        atsCheck(
+          (await exportPdf(bytes, data.els, data.fonts, data.layout, "off", undefined, data.images, data.fields)).pdf,
+        ),
       );
     const { pdf, problems } = await exportPdf(
       bytes,
@@ -91,6 +96,7 @@ self.onmessage = async ({ data }: MessageEvent<WorkerIn>) => {
       data.compression,
       data.meta,
       data.images,
+      data.fields,
     );
     reply(data.id, { pdf, problems }, [pdf.buffer as ArrayBuffer]);
   } catch (err) {

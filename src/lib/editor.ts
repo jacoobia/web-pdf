@@ -2,6 +2,7 @@ import {
   type PointerEvent,
   type MouseEvent as RMouseEvent,
   type UIEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,6 +18,7 @@ import {
   type Compression,
   compact,
   type El,
+  type FormField,
   familyOf,
   findMatches,
   fontKey,
@@ -161,7 +163,28 @@ export function useEditor() {
   const resizing = useRef("");
   const clip = useRef<{ els: El[]; text: string; pastes: number; synced: boolean } | null>(null);
   const pasteTimer = useRef(0);
-  const saved = useRef<{ els: El[]; hf: HeaderFooter | null; order: Slot[]; meta?: Meta | null }>({
+  const [fields, setFields] = useState<FormField[]>([]);
+  const setField = useCallback(
+    (id: string, change: Partial<FormField>) =>
+      setFields((fs) => {
+        const radio = fs.find((f) => f.id === id && f.kind === "radio" && change.checked);
+        return fs.map((f) =>
+          f.id === id
+            ? { ...f, ...change }
+            : radio && f.kind === "radio" && f.name === radio.name
+              ? { ...f, checked: false }
+              : f,
+        );
+      }),
+    [],
+  );
+  const saved = useRef<{
+    els: El[];
+    hf: HeaderFooter | null;
+    order: Slot[];
+    meta?: Meta | null;
+    fields?: FormField[];
+  }>({
     els: [],
     hf: null,
     order: [],
@@ -282,7 +305,8 @@ export function useEditor() {
     elsRef.current !== saved.current.els ||
     hf !== saved.current.hf ||
     orderRef.current !== saved.current.order ||
-    meta !== saved.current.meta;
+    meta !== saved.current.meta ||
+    fields !== saved.current.fields;
   const clearPreviews = () => {
     previews.clear();
     clip.current = null;
@@ -300,6 +324,7 @@ export function useEditor() {
     setPages([]);
     setOrder([]);
     setEls([]);
+    setFields([]);
     setSel([]);
     setAdding(false);
     setReport(null);
@@ -361,7 +386,12 @@ export function useEditor() {
       setReport({ ok: true, busy: true, lines: [`Opening ${f.name}…`] });
       const bytes = new Uint8Array(await f.arrayBuffer());
       clearPreviews();
-      const { pages, els, meta: found } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
+      const {
+        pages,
+        els,
+        meta: found,
+        fields: inFile,
+      } = await previews.request<"open">({ type: "open", bytes }, [bytes.buffer]);
       const draft = prefs.autosave === "1" ? await loadDraft(f.name, f.size) : undefined;
       pendingDraft.current = draft ?? null;
       let list = els;
@@ -375,7 +405,8 @@ export function useEditor() {
       docPages.current = pages.length;
       base.current = null;
       setMeta(found);
-      saved.current = { els: list, hf, order: first, meta: found };
+      saved.current = { els: list, hf, order: first, meta: found, fields: inFile };
+      setFields(inFile);
       setFile({ name: f.name, size: f.size, handle, fresh });
       setEstimate(null);
       if (!fresh) remember(f.name, handle, f);
@@ -412,7 +443,9 @@ export function useEditor() {
       let list = r.els;
       for (const key of fonts.keys()) list = fontForSource(list, key, key);
       elsRef.current = list;
+      setFields(r.fields);
     }
+    if (draft.fields) setFields(draft.fields);
     for (const [key, bytes] of draft.fonts) if (!fonts.has(key)) await addFont(bytes, key);
     record("");
     const next = applyDraft(elsRef.current, draft);
@@ -535,6 +568,7 @@ export function useEditor() {
       compression,
       meta: metaChanged() && meta ? meta : undefined,
       images: usedImages(list),
+      fields,
     });
   const usedImages = (list: El[]) => {
     const keys = new Set(list.flatMap((e) => (e.image?.key && !e.deleted ? [e.image.key] : [])));
@@ -550,6 +584,7 @@ export function useEditor() {
         fonts,
         layout: { pages, order: orderRef.current },
         images: usedImages(elsRef.current),
+        fields,
       });
       setAts({ report });
     } catch (err) {
@@ -570,6 +605,7 @@ export function useEditor() {
     let ps = pages;
     let o = orderRef.current;
     let list = elsRef.current;
+    let fs = fields;
     let count = 0;
     let failed = "";
     for (const f of files) {
@@ -586,6 +622,7 @@ export function useEditor() {
         o = [...o.slice(0, at), ...r.pages.map((_, i) => ({ src: first + i, rotate: 0 })), ...o.slice(at)];
         at += r.pages.length;
         list = [...list, ...r.els];
+        fs = [...fs, ...r.fields];
         count += r.pages.length;
       } catch (err) {
         failed = `Couldn't merge ${f.name}: ${errorText(err)}`;
@@ -599,6 +636,7 @@ export function useEditor() {
       setPages(ps);
       setEls(list);
       setOrder(o);
+      setFields(fs);
     }
     setReport(
       failed
@@ -652,7 +690,7 @@ export function useEditor() {
     const name = target?.name ?? suggestedName;
     setReport({ ok: true, busy: true, lines: [`Saving ${name}…`] });
     try {
-      const snapshot = { els: elsRef.current, hf, order: orderRef.current, meta };
+      const snapshot = { els: elsRef.current, hf, order: orderRef.current, meta, fields };
       const { pdf, problems } = await build(snapshot.els, only ?? snapshot.order);
       if (target) {
         const out = await target.createWritable();
@@ -923,10 +961,11 @@ export function useEditor() {
         fonts: [...fonts].filter(([k]) => used.has(k)),
         images: [...usedImages(list)],
         base: base.current ?? undefined,
+        fields: fields !== saved.current.fields ? fields : undefined,
       });
     }, 1000);
     return () => clearTimeout(t);
-  }, [file, els, order, hf, pages, fonts, meta, added, prefs.autosave]);
+  }, [file, els, order, hf, pages, fonts, meta, added, fields, prefs.autosave]);
 
   useEffect(() => {
     if (prefs.autosave !== "1") clearDrafts();
@@ -1306,6 +1345,8 @@ export function useEditor() {
     setAlign,
     toggleStyle,
     patch,
+    fields,
+    setField,
     editing,
     setEditing,
     undo,

@@ -36,6 +36,7 @@ A PDF editor that runs in your browser. Files are edited locally and never uploa
 - Add new text boxes that wrap to a width you set, with bold, italic and alignment.
 - Add and edit links on text, such as an email address or a portfolio.
 - Move, copy and delete text and images, with snapping to nearby text.
+- Fill in PDF forms on the page: text boxes, tick boxes, options and dropdowns. Read-only fields stay as they are.
 - Add images such as a photo or signature, and resize any image on the page.
 - Merge PDFs: join several files into a new one in the order you choose, or merge a PDF into the one you have open at the start, the end or around the current page. Dropping a PDF on the page list merges it at that spot.
 - Reorder, rotate, delete and add blank pages, or save some pages on their own.

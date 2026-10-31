@@ -30,7 +30,7 @@ import {
   wrapLines,
 } from "../src/lib/pdf";
 import { confine, snap } from "../src/lib/snap";
-import { CALIBRI, makeLargeSample, makeSample, photo } from "./sample";
+import { CALIBRI, makeForm, makeLargeSample, makeSample, photo } from "./sample";
 
 const src = await makeSample();
 const { pages, els } = extract(src);
@@ -553,6 +553,52 @@ for (const [locale, w, h] of [
     "text saves onto a new document",
   );
 }
+
+// forms: fields are read with their kind and state, and filled values are written back
+const formPdf = await makeForm();
+const fields = extract(formPdf).fields;
+assert.deepEqual(
+  fields.map((f) => `${f.name}:${f.kind}`),
+  [
+    "name:text",
+    "notes:text",
+    "subscribe:check",
+    "size:radio",
+    "size:radio",
+    "country:choice",
+    "ref:text",
+    "signature:signature",
+  ],
+);
+assert.equal(fields.find((f) => f.name === "ref")!.readOnly, true);
+assert.equal(fields.find((f) => f.name === "notes")!.multiline, true);
+assert.deepEqual(fields.find((f) => f.kind === "choice")!.options, ["United Kingdom", "Ireland", "France"]);
+const filled = fields.map((f) =>
+  f.name === "name"
+    ? { ...f, value: "Leon S. Kennedy" }
+    : f.name === "country"
+      ? { ...f, value: "Ireland" }
+      : f.name === "subscribe" || f.id === "w0-4"
+        ? { ...f, checked: true }
+        : f.name === "ref"
+          ? { ...f, value: "changed" }
+          : f,
+);
+const back = extract(
+  (await exportPdf(formPdf, [], new Map(), undefined, "off", undefined, new Map(), filled)).pdf,
+).fields;
+const byId = new Map(back.map((f) => [f.id, f]));
+assert.equal(byId.get("w0-0")!.value, "Leon S. Kennedy");
+assert.equal(byId.get("w0-5")!.value, "Ireland");
+assert.equal(byId.get("w0-2")!.checked, true, "checkbox ticked");
+assert.deepEqual([byId.get("w0-3")!.checked, byId.get("w0-4")!.checked], [false, true], "second radio chosen");
+assert.equal(byId.get("w0-6")!.value, "ABC-123", "read-only fields are left alone");
+const unchanged = await exportPdf(formPdf, [], new Map(), undefined, "off", undefined, new Map(), fields);
+assert.deepEqual(
+  extract(unchanged.pdf).fields.map((f) => [f.value, f.checked]),
+  fields.map((f) => [f.value, f.checked]),
+);
+assert.ok(new Previewer(formPdf).render(0, 1, { text: [], images: [] }).w > 0, "renders without its fields");
 
 await Bun.write("scripts/out.pdf", pdf);
 console.log("ok: all checks passed, wrote scripts/out.pdf");

@@ -5,6 +5,22 @@ export const HYPHEN_CHARS = "\u2010\u2011\u2212";
 export const HYPHENS = new RegExp(`[${HYPHEN_CHARS}]`, "g");
 
 export type Rect = { x: number; y: number; w: number; h: number };
+
+export type FormField = {
+  id: string;
+  page: number;
+  index: number;
+  kind: "text" | "check" | "radio" | "choice" | "signature";
+  name: string;
+  rect: Rect;
+  value: string;
+  checked: boolean;
+  options: string[];
+  multiline: boolean;
+  readOnly: boolean;
+  maxLen: number;
+  size: number;
+};
 export type Style = { font: string; size: number; color: string };
 
 export type El = Style & {
