@@ -15,12 +15,15 @@ type Drag = { begin(): boolean; move(dy: number): void; end(close: boolean): voi
 /** Grab bar for a bottom sheet on phones: drag it down to close the sheet it sits in. `drag` replaces the slide. */
 export function SheetHandle({ onClose, drag }: { onClose: () => void; drag?: Drag }) {
   const start = useRef<number | null>(null);
+  const begun = useRef(false);
   const custom = useRef(false);
   const sheet = (e: PointerEvent) => (e.currentTarget as HTMLElement).parentElement!;
   const end = (e: PointerEvent, close: boolean) => {
     if (start.current === null) return;
     const dy = e.clientY - start.current;
     start.current = null;
+    if (!begun.current) return;
+    begun.current = false;
     if (custom.current) return drag?.end(close && dy > 80);
     if (close && dy > 80) slide(sheet(e), "translateY(100%)", onClose);
     else slide(sheet(e), "translateY(0)");
@@ -32,12 +35,17 @@ export function SheetHandle({ onClose, drag }: { onClose: () => void; drag?: Dra
       onPointerDown={(e) => {
         start.current = e.clientY;
         e.currentTarget.setPointerCapture(e.pointerId);
-        custom.current = !!drag?.begin();
-        if (!custom.current) sheet(e).style.transition = "none";
       }}
       onPointerMove={(e) => {
         if (start.current === null) return;
         const dy = Math.max(0, e.clientY - start.current);
+        // Only a downward drag starts closing, so a swipe up on an open sheet leaves it as it is.
+        if (!begun.current) {
+          if (dy < 4) return;
+          begun.current = true;
+          custom.current = !!drag?.begin();
+          if (!custom.current) sheet(e).style.transition = "none";
+        }
         if (custom.current) drag?.move(dy);
         else sheet(e).style.transform = `translateY(${dy}px)`;
       }}

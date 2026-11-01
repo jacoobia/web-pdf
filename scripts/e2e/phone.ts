@@ -76,6 +76,17 @@ await test(
     };
     await page.locator('.el[aria-label="Jane Example"]').tap();
     await page.locator(".panel").waitFor();
+    assert.equal(
+      await page.locator(".panel").getByRole("button", { name: "Hide the panel" }).count(),
+      0,
+      "the handle replaces the close button",
+    );
+    await page.mouse.move(195, (await page.locator(".panel .sheet-handle").boundingBox())!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(195, 200, { steps: 6 });
+    const untouched = await page.locator(".panel").evaluate((n) => !n.classList.contains("hush") && !n.style.clipPath);
+    await page.mouse.up();
+    assert.ok(untouched, "swiping up on an open panel does nothing");
     await page.locator(".panel").evaluate((n) => n.scrollTo(0, n.scrollHeight));
     const [panel, handle] = await Promise.all(
       [".panel", ".panel .sheet-handle"].map(async (s) => (await page.locator(s).boundingBox())!),

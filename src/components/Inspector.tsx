@@ -4,7 +4,7 @@ import { EditTab } from "./inspector/EditTab";
 import { FontsTab } from "./inspector/FontsTab";
 import { InfoTab } from "./inspector/InfoTab";
 import { PageTab } from "./inspector/PageTab";
-import { IconButton, Panel, Segmented, SheetHandle } from "./ui";
+import { Panel, Segmented, SheetHandle } from "./ui";
 import "./Inspector.css";
 
 const TABS = [
@@ -28,12 +28,6 @@ export function Inspector({ editor }: { editor: Editor }) {
       />
       <div className="inspector-tabs">
         <Segmented role="tab" label="Panel" value={tab} options={TABS} onChange={setTab} />
-        <IconButton
-          className="mobile-only"
-          icon="close"
-          label="Hide the panel"
-          onClick={() => editor.setPanelOpen(false)}
-        />
       </div>
       {tab === "edit" && <EditTab editor={editor} />}
       {tab === "fonts" && <FontsTab editor={editor} />}
