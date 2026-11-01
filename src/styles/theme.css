@@ -98,6 +98,18 @@ a {
   background: transparent;
 }
 
+.app .mobile-only {
+  display: none;
+}
+@media (max-width: 760px) {
+  .app .desktop-only {
+    display: none;
+  }
+  .app .mobile-only {
+    display: inline-grid;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

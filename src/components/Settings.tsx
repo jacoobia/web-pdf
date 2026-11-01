@@ -84,6 +84,7 @@ const Appearance = ({ prefs, set }: { prefs: Prefs; set: SetPref }) => (
       />
     </Setting>
     <Setting
+      className="desktop-only"
       title="Interface style"
       description="Toolbar keeps a docked sidebar. Canvas uses a floating panel over the pages."
     >
@@ -116,10 +117,18 @@ const Appearance = ({ prefs, set }: { prefs: Prefs; set: SetPref }) => (
       </span>
       <span className="preview-sel">Selected text</span>
     </div>
-    <Setting title="Page thumbnails" description="A column of small pages for moving around and reordering.">
+    <Setting
+      className="desktop-only"
+      title="Page thumbnails"
+      description="A column of small pages for moving around and reordering."
+    >
       <Switch label="Page thumbnails" checked={prefs.thumbs === "1"} onChange={(v) => set("thumbs", v ? "1" : "0")} />
     </Setting>
-    <Setting title="Panel side" description="Which side the sidebar or floating panel sits on.">
+    <Setting
+      className="desktop-only"
+      title="Panel side"
+      description="Which side the sidebar or floating panel sits on."
+    >
       <Segmented
         label="Panel side"
         value={prefs.side}
