@@ -41,7 +41,7 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/e2e.ts"],
+      "includes": ["scripts/e2e/**"],
       "linter": { "rules": { "performance": { "useDomNodeTextContent": "off" } } }
     }
   ]

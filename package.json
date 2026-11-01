@@ -18,7 +18,7 @@
     "format": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "bun scripts/check.ts",
-    "test:e2e": "bun scripts/sample.ts && node --experimental-strip-types --no-warnings scripts/e2e.ts",
+    "test:e2e": "bun scripts/sample.ts && node --experimental-strip-types --no-warnings scripts/e2e/run.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "dependencies": {
