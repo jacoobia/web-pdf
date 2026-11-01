@@ -150,3 +150,31 @@ await test(
   },
   PHONE,
 );
+
+await test(
+  "on a phone, the guide opens on a searchable list, and topics open with back and named neighbours",
+  async ({ page }) => {
+    await page.goto(url);
+    await page.getByRole("button", { name: "Guide", exact: true }).click();
+    const guide = page.getByRole("dialog", { name: "Guide" });
+    await guide
+      .getByRole("navigation", { name: "Guide topics" })
+      .getByRole("button", { name: "Saving", exact: true })
+      .waitFor();
+    assert.notEqual(
+      await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+      "Filter topics",
+      "no keyboard on open",
+    );
+    await guide.getByRole("textbox", { name: "Filter topics" }).fill("sign");
+    const first = guide.getByRole("list", { name: "Search results" }).getByRole("button").first();
+    assert.match(await first.innerText(), /^Signing/, "title matches come first");
+    assert.equal(await first.locator("mark").first().innerText(), "Sign");
+    await first.click();
+    assert.equal(await guide.locator("article h3").innerText(), "Signing");
+    assert.match(await guide.getByRole("button", { name: /^Next/ }).innerText(), /Document details/);
+    await guide.getByRole("button", { name: "Guide", exact: true }).click();
+    await guide.getByRole("textbox", { name: "Filter topics" }).waitFor();
+  },
+  PHONE,
+);

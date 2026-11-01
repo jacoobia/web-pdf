@@ -56,14 +56,17 @@
     padding: 0 0 var(--keyboard, 0px);
     place-items: end stretch;
   }
-  .dialog {
-    width: 100%;
-    max-height: calc(92dvh - var(--keyboard, 0px));
-  }
+  /* Every sheet is the same height, so switching between them doesn't jump. */
+  .dialog,
   .dialog.wide {
-    height: calc(92dvh - var(--keyboard, 0px));
+    width: 100%;
+    height: calc(75dvh - var(--keyboard, 0px));
+    max-height: none;
     border-radius: 14px 14px 0 0;
     border-bottom: 0;
+  }
+  .dialog-body {
+    flex: 1;
   }
   .dialog-head {
     padding-left: var(--gutter);
