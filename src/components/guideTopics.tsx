@@ -490,9 +490,14 @@ export const TOPICS: Topic[] = [
     body: () => (
       <>
         <ul>
+          <li>The tools and zoom sit together at the bottom of the screen, within reach of your thumb.</li>
           <li>Pinch with two fingers to zoom.</li>
           <li>Tap to select, and drag to move.</li>
           <li>The panel opens as a sheet from the bottom. Close it to see the whole page.</li>
+          <li>
+            Find and replace, the panel, the theme, the guide, settings and feedback are under <strong>⋯</strong> at the
+            top.
+          </li>
         </ul>
       </>
     ),

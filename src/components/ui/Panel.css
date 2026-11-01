@@ -19,9 +19,9 @@
   .panel.floating {
     position: fixed;
     z-index: 15;
-    inset: auto 0 0;
+    inset: auto 0 var(--keyboard, 0px);
     width: auto;
-    max-height: 48dvh;
+    max-height: min(48dvh, calc(100dvh - var(--keyboard, 0px) - 64px));
     padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     border: 1px solid var(--border);
     border-width: 1px 0 0;

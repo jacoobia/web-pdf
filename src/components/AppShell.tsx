@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { droppedHandles } from "../lib/browser";
+import { type ReactNode, useEffect } from "react";
+import { droppedHandles, trackKeyboard } from "../lib/browser";
 import { cx } from "../lib/cx";
 import type { Editor } from "../lib/editor";
 import { TooltipHost } from "./ui";
@@ -7,6 +7,7 @@ import "./AppShell.css";
 
 export function AppShell({ editor, children }: { editor: Editor; children: ReactNode }) {
   const { file, canvasStyle, panelOpen, prefs } = editor;
+  useEffect(trackKeyboard, []);
   return (
     <div
       className={cx(

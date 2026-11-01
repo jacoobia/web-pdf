@@ -13,6 +13,7 @@ export { Note } from "./Note";
 export { Panel } from "./Panel";
 export { Segmented } from "./Segmented";
 export { Setting } from "./Setting";
+export { SheetHandle } from "./SheetHandle";
 export { Swatches } from "./Swatches";
 export { Switch } from "./Switch";
 export { Badge, Callout, Dot, Kbd, List, Muted, Pre, Spinner, Tag } from "./Text";

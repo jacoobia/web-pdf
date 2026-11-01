@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { errorText } from "../lib/browser";
 import type { Editor } from "../lib/editor";
 import { openFeedback } from "../lib/feedback";
-import { Button, IconButton, Tooltip } from "./ui";
+import { Button, Group, IconButton, Menu, Tooltip } from "./ui";
 
 export const REPO_URL = "https://github.com/jacoobia/web-pdf";
 
@@ -64,17 +65,57 @@ export const GuideButton = ({ editor }: { editor: Editor }) => (
   <IconButton icon="help" label="Guide" shortcut="?" onClick={() => editor.setGuide("open")} />
 );
 
+const sendFeedback = (editor: Editor) =>
+  openFeedback(REPO_URL.replace("https://github.com/", "")).catch((err) =>
+    editor.setReport({ ok: false, lines: [`Couldn't open feedback: ${errorText(err)}`] }),
+  );
+
 export const FeedbackButton = ({ editor }: { editor: Editor }) => (
-  <IconButton
-    icon="feedback"
-    label="Send feedback"
-    onClick={() =>
-      openFeedback(REPO_URL.replace("https://github.com/", "")).catch((err) =>
-        editor.setReport({ ok: false, lines: [`Couldn't open feedback: ${errorText(err)}`] }),
-      )
-    }
-  />
+  <IconButton icon="feedback" label="Send feedback" onClick={() => sendFeedback(editor)} />
 );
+
+// On phones the view controls and find share one menu, so the header fits on a single row.
+export function MoreMenu({ editor }: { editor: Editor }) {
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  const dark = editor.theme === "dark";
+  return (
+    <>
+      <Group label="More">
+        <IconButton
+          icon="more"
+          label="More"
+          aria-haspopup="menu"
+          aria-expanded={!!at}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setAt({ left: r.right - 232, top: r.bottom + 6 });
+          }}
+        />
+      </Group>
+      {at && (
+        <Menu
+          at={at}
+          onClose={() => setAt(null)}
+          items={[
+            { label: "Find and replace", onSelect: () => editor.setFindOpen(true) },
+            {
+              label: editor.panelOpen ? "Hide the panel" : "Show the panel",
+              onSelect: () => editor.setPanelOpen(!editor.panelOpen),
+            },
+            "separator",
+            {
+              label: dark ? "Switch to light theme" : "Switch to dark theme",
+              onSelect: () => editor.setPref("theme", dark ? "light" : "dark"),
+            },
+            { label: "Guide", shortcut: "?", onSelect: () => editor.setGuide("open") },
+            { label: "Settings", onSelect: () => editor.setSettingsOpen(true) },
+            { label: "Send feedback", onSelect: () => sendFeedback(editor) },
+          ]}
+        />
+      )}
+    </>
+  );
+}
 
 export function ThumbsToggle({ editor }: { editor: Editor }) {
   const on = editor.showThumbs;
@@ -88,6 +129,16 @@ export function ThumbsToggle({ editor }: { editor: Editor }) {
     />
   );
 }
+
+export const DeleteButton = ({ editor }: { editor: Editor }) => (
+  <IconButton
+    icon="trash"
+    label="Delete the selection"
+    shortcut="Del"
+    disabled={!editor.sel.length}
+    onClick={() => editor.remove(editor.sel)}
+  />
+);
 
 export const FindButton = ({ editor }: { editor: Editor }) => (
   <IconButton icon="search" label="Find and replace" shortcut="Ctrl+F" onClick={() => editor.setFindOpen(true)} />

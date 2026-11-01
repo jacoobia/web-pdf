@@ -1,10 +1,12 @@
 import type { Editor } from "../lib/editor";
 import {
+  DeleteButton,
   FeedbackButton,
   FindButton,
   GuideButton,
   HistoryTools,
   ModeTools,
+  MoreMenu,
   PanelToggle,
   SaveButton,
   SettingsButton,
@@ -64,6 +66,7 @@ export function AppHeader({ editor }: { editor: Editor }) {
           <Group label="History">
             <HistoryTools editor={editor} />
             <FindButton editor={editor} />
+            <DeleteButton editor={editor} />
           </Group>
         </div>
       )}
@@ -76,6 +79,7 @@ export function AppHeader({ editor }: { editor: Editor }) {
           <SettingsButton editor={editor} />
           <FeedbackButton editor={editor} />
         </Group>
+        {file && <MoreMenu editor={editor} />}
         <SaveButton editor={editor} />
       </div>
     </header>

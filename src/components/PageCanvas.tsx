@@ -1,7 +1,9 @@
 import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import type { Editor } from "../lib/editor";
 import { contentTransform, type El, type FormField, isDirty, type Slot, turned } from "../lib/model";
-import { ZoomTools } from "./EditorTools";
+import { beginMorph, morph, morphOpen, settle } from "./dockMorph";
+import { ModeTools, ZoomTools } from "./EditorTools";
 import { FormFieldInput } from "./FormFieldInput";
 import { InlineText } from "./InlineText";
 import { HeaderFooterItem, PageItem } from "./PageItem";
@@ -35,6 +37,8 @@ export function PageCanvas({ editor }: { editor: Editor }) {
   const live = useRef({ scale, zoomTo: editor.zoomTo, cancel: editor.cancelGesture });
   live.current = { scale, zoomTo: editor.zoomTo, cancel: editor.cancelGesture };
   const anchor = useRef<{ x: number; y: number; from: number } | null>(null);
+  const swipe = useRef<number | null>(null);
+  const morphing = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per zoom step; the refs it reads are set just before
   useLayoutEffect(() => {
     const m = pagesRef.current,
@@ -267,8 +271,45 @@ export function PageCanvas({ editor }: { editor: Editor }) {
         {order.flatMap((slot, at) => [pageView(slot, at), bars[at]])}
       </main>
       {file && (
-        <div className="zoom-float" role="group" aria-label="Zoom">
-          <ZoomTools editor={editor} />
+        <div className="zoom-float">
+          <button
+            type="button"
+            className="dock-handle"
+            aria-label="Show the panel"
+            onClick={(e) => e.detail === 0 && editor.setPanelOpen(true)}
+            onPointerDown={(e) => {
+              swipe.current = e.clientY;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              // Render the panel now, so the morph starts in this same frame and a quick tap can't outrun it.
+              flushSync(() => editor.setPanelOpen(true));
+              morphing.current = beginMorph();
+              if (morphing.current) morph(0);
+            }}
+            onPointerMove={(e) => {
+              if (swipe.current !== null && morphing.current) morphOpen(swipe.current - e.clientY);
+            }}
+            onPointerUp={(e) => {
+              if (swipe.current === null) return;
+              const up = swipe.current - e.clientY;
+              swipe.current = null;
+              if (!morphing.current) return;
+              morphing.current = false;
+              const open = up > 60 || Math.abs(up) < 6;
+              settle(open, open ? undefined : () => editor.setPanelOpen(false));
+            }}
+            onPointerCancel={() => {
+              if (swipe.current === null || !morphing.current) return;
+              swipe.current = null;
+              morphing.current = false;
+              settle(false, () => editor.setPanelOpen(false));
+            }}
+          />
+          <div className="dock-tools" role="group" aria-label="Tools">
+            <ModeTools editor={editor} />
+          </div>
+          <div className="dock-zoom" role="group" aria-label="Zoom">
+            <ZoomTools editor={editor} />
+          </div>
         </div>
       )}
     </>

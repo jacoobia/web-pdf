@@ -141,6 +141,16 @@
   border-radius: 3px;
   cursor: nwse-resize;
 }
+.dock-tools,
+.dock-zoom {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dock-tools,
+.dock-handle {
+  display: none;
+}
 .zoom-float {
   position: absolute;
   left: calc(50% - var(--scrollbar-w, 0px) / 2);

@@ -53,15 +53,15 @@
 }
 @media (max-width: 760px) {
   .scrim {
-    padding: 0;
+    padding: 0 0 var(--keyboard, 0px);
     place-items: end stretch;
   }
   .dialog {
     width: 100%;
-    max-height: 92dvh;
+    max-height: calc(92dvh - var(--keyboard, 0px));
   }
   .dialog.wide {
-    height: 92dvh;
+    height: calc(92dvh - var(--keyboard, 0px));
     border-radius: 14px 14px 0 0;
     border-bottom: 0;
   }

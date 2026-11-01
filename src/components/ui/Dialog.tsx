@@ -1,6 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef } from "react";
 import { cx } from "../../lib/cx";
 import { IconButton } from "./IconButton";
+import { SheetHandle } from "./SheetHandle";
 import "./Dialog.css";
 
 const FOCUSABLE = "button, input, select, textarea, a[href]";
@@ -50,6 +51,7 @@ export function Dialog({
         aria-labelledby={titleId}
         onKeyDown={onKeyDown}
       >
+        <SheetHandle onClose={onClose} />
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
           <IconButton icon="close" label={`Close ${title.toLowerCase()}`} onClick={onClose} />

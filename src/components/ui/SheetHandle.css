@@ -1,0 +1,39 @@
+.sheet-handle {
+  display: none;
+}
+@media (max-width: 760px) {
+  .sheet-handle {
+    display: flex;
+    justify-content: center;
+    flex: none;
+    height: 20px;
+    margin: -8px 0 -4px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sheet-handle::before {
+    content: "";
+    width: 36px;
+    height: 4px;
+    margin-top: 6px;
+    border-radius: 2px;
+    background: var(--border);
+  }
+}
+@media (max-width: 760px) {
+  .dialog .sheet-handle {
+    position: relative;
+    z-index: 1;
+    margin: 2px 0 -14px;
+  }
+}
+@media (max-width: 760px) {
+  .panel .sheet-handle {
+    position: sticky;
+    top: -14px;
+    z-index: 2;
+    margin: -14px calc(-1 * var(--gutter)) -4px;
+    height: 26px;
+    background: var(--surface);
+  }
+}

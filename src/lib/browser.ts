@@ -28,3 +28,20 @@ export const droppedHandles = (items: DataTransferItemList) =>
   );
 
 export const errorText = (err: unknown) => (err as Error).message;
+
+// iOS keeps fixed elements under the on-screen keyboard, so expose its height as --keyboard for CSS to lift them.
+export function trackKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return () => {};
+  const root = document.documentElement;
+  const update = () => {
+    const kb = vv.scale > 1.01 ? 0 : Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+    root.style.setProperty("--keyboard", `${kb}px`);
+    root.classList.toggle("keyboard-open", kb > 0);
+    const el = document.activeElement;
+    if (kb && el instanceof HTMLElement && el.matches("input, textarea, select"))
+      el.scrollIntoView({ block: "nearest" });
+  };
+  vv.addEventListener("resize", update);
+  return () => vv.removeEventListener("resize", update);
+}
