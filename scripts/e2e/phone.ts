@@ -178,3 +178,38 @@ await test(
   },
   PHONE,
 );
+
+await test(
+  "on a phone, sheet handles are easy to hit without covering the controls next to them",
+  async ({ page, open }) => {
+    await open();
+    const hit = (x: number, y: number) =>
+      page.evaluate(
+        ([px, py]) => {
+          const el = document.elementFromPoint(px, py);
+          return el?.closest(".sheet-handle, .dock-handle")
+            ? "handle"
+            : (el?.closest("button")?.textContent ?? el?.tagName);
+        },
+        [x, y],
+      );
+    const dock = (await page.locator(".dock-handle").boundingBox())!;
+    assert.equal(await hit(dock.x + 4, dock.y + 4), "handle", "the dock handle reaches past its bar");
+    await page.locator('.el[aria-label="Jane Example"]').tap();
+    const handle = (await page.locator(".panel .sheet-handle").boundingBox())!;
+    assert.equal(await hit(60, handle.y + 34), "handle", "the panel handle reaches down to the tabs");
+    const edit = (await page.locator(".panel").getByRole("tab", { name: "Edit" }).boundingBox())!;
+    assert.equal(await hit(edit.x + edit.width / 2, edit.y + 4), "Edit", "the tabs still get their taps");
+    await page.getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitem", { name: "Settings" }).click();
+    const top = (await page.locator(".dialog .sheet-handle").boundingBox())!;
+    assert.equal(await hit(60, top.y + 50), "handle", "the dialog handle covers the title row");
+    const close = (await page.getByRole("button", { name: "Close settings" }).boundingBox())!;
+    const onClose = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest("button")?.getAttribute("aria-label"),
+      [close.x + close.width / 2, close.y + close.height / 2],
+    );
+    assert.equal(onClose, "Close settings", "the close button still works");
+  },
+  PHONE,
+);

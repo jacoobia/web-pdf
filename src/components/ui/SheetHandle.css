@@ -37,3 +37,20 @@
     background: var(--surface);
   }
 }
+/* Wider, invisible touch zones over empty space, so the handle is hard to miss without covering any control. */
+@media (max-width: 760px) {
+  .sheet-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .dialog .sheet-handle::after {
+    right: 56px;
+    height: 58px;
+  }
+  .panel .sheet-handle::after {
+    right: 0;
+    height: 38px;
+  }
+}
